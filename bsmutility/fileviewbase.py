@@ -612,7 +612,7 @@ class TreeCtrlWithTimeStamp(TreeCtrlBase):
         if self.ItemHasChildren(item):
             return dataset
         dataname = self.GetItemText(item)
-        data = dataset.loc[:, [self.timestamp, dataname]]
+        data = dataset.loc[:, [self.timestamp_key, dataname]]
         return data
 
     def GetPlotXLabel(self):
