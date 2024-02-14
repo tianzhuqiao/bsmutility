@@ -17,7 +17,7 @@ from .autocomplete import AutocompleteTextCtrl
 from .utility import FastLoadTreeCtrl, svg_to_bitmap, open_file_with_default_app, \
                      show_file_in_finder, get_file_finder_name
 from .editor_base import EditorBase
-
+from .bsminterface import Interface
 
 class HelpText(EditorBase):
 
@@ -686,12 +686,12 @@ class DirPanel(wx.Panel):
                 return
             (_, ext) = os.path.splitext(filename)
 
-            # try to open it with bsmedit
+            # try to open it with the main app
             resp = dp.send(signal='frame.file_drop', filename=filepath)
             if resp is not None:
                 for r in resp:
                     if r[1] is not None:
-                        # bsmedit succeed
+                        # succeed
                         return
             # if failed, try to open it with OS
             open_file_with_default_app(filepath)
@@ -842,7 +842,8 @@ class DirPanel(wx.Panel):
                         item, cookie = self.dirtree.GetNextChild(root_item, cookie)
 
     def new_folder(self):
-        dlg = wx.TextEntryDialog(self, "Folder name", caption='bsmedit', value='')
+        title = self.GetTopLevelParent().GetLabel()
+        dlg = wx.TextEntryDialog(self, "Folder name", caption=title, value='')
         dlg.ShowModal()
         filename = dlg.GetValue()
         dlg.Destroy()
@@ -853,7 +854,7 @@ class DirPanel(wx.Panel):
         new_folder = os.path.join(root_dir, filename)
         if  os.path.exists(new_folder):
             msg = f"{filename} already exists. Please choose a different name."
-            dlg = wx.GenericMessageDialog(self, msg, 'bsmedit', style=wx.OK)
+            dlg = wx.GenericMessageDialog(self, msg, title, style=wx.OK)
             dlg.ShowModal()
             dlg.Destroy()
             return
@@ -926,16 +927,11 @@ class DirPanel(wx.Panel):
         elif idx == wx.ID_BACKWARD:
             event.Enable(h_idx > 0)
 
-class MiscTools():
-    frame = None
+class MiscTools(Interface):
 
     @classmethod
-    def Initialize(cls, frame, **kwargs):
-        if cls.frame:
-            return
-        cls.frame = frame
-        if not frame:
-            return
+    def initialize(cls, frame, **kwargs):
+        super().initialize(frame, **kwargs)
 
         active = kwargs.get('active', True)
         direction = kwargs.get('direction', 'top')
@@ -965,14 +961,3 @@ class MiscTools():
                 showhidemenu='View:Panels:Browsing',
                 active=active,
                 direction=direction)
-
-        dp.connect(receiver=cls.Uninitialize, signal='frame.exit')
-
-    @classmethod
-    def Uninitialize(cls):
-        """destroy the module"""
-
-
-def bsm_initialize(frame, **kwargs):
-    """module initialization"""
-    MiscTools.Initialize(frame, **kwargs)

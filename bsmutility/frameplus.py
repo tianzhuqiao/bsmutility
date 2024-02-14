@@ -73,14 +73,12 @@ class AuiManagerPlus(aui.AuiManager):
 class FramePlus(wx.Frame):
     def __init__(self,
                  parent,
-                 id=wx.ID_ANY,
-                 title=u'bsmedit',
+                 title="",
                  pos=wx.DefaultPosition,
-                 size=wx.Size(800, 600),
+                 size=wx.DefaultSize,
                  style=wx.DEFAULT_FRAME_STYLE | wx.TAB_TRAVERSAL):
         wx.Frame.__init__(self,
                           parent,
-                          id=id,
                           title=title,
                           pos=pos,
                           size=size,

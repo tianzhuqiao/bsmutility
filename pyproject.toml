@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=67.6.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bsmutility"
+authors = [
+  { name="Tianzhu Qiao", email="tq@feiyilin.com" },
+]
+license = {file = "LICENSE"}
+description='Some helper class'
+readme = "README.md"
+requires-python = ">=3.0"
+classifiers = [
+    "Operating System :: OS Independent",
+]
+dependencies = [
+          'wxpython>=4.2.1', 'matplotlib>=3.8.1', 'numpy', 'click', 'pandas',
+          'propgrid', 'mplpanel', 'aui2',
+      ]
+dynamic = ["version"]
+
+[tool.setuptools.dynamic]
+version = {attr = "bsmutility.__version__"}
+
+[project.urls]
+"Homepage" = "https://github.com/tianzhuqiao/bsmutility"
+
+[tool.setuptools.packages]
+find = {}
+
+[options]
+include_package_data = true

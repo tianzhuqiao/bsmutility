@@ -13,6 +13,7 @@ from .utility import FastLoadTreeCtrl, _dict, send_data_to_shell, get_variable_n
 from .utility import svg_to_bitmap
 from .utility import get_file_finder_name, show_file_in_finder
 from .autocomplete import AutocompleteTextCtrl
+from .bsminterface import Interface
 
 class FindListCtrl(wx.ListCtrl):
     ID_FIND_REPLACE = wx.NewIdRef()
@@ -910,10 +911,9 @@ class PanelNotebookBase(PanelBase):
         return panel, search, ctrl
 
 
-class FileViewBase:
+class FileViewBase(Interface):
     name = None
     panel_type = PanelBase
-    frame = None
     target_pane = "History"
 
     ID_PANE_COPY_PATH = wx.NewIdRef()
@@ -927,18 +927,13 @@ class FileViewBase:
 
     @classmethod
     def initialize(cls, frame, **kwargs):
-        if cls.frame is not None:
-            # already initialized
-            return
-        cls.frame = frame
+        super().initialize(frame, **kwargs)
+
         cls.IDS = {}
         cls.init_menu()
 
         dp.connect(cls.process_command, signal=f'bsm.{cls.name}')
         dp.connect(receiver=cls.set_active, signal='frame.activate_panel')
-        dp.connect(receiver=cls.initialized, signal='frame.initialized')
-        dp.connect(receiver=cls.uninitializing, signal='frame.exiting')
-        dp.connect(receiver=cls.uninitialized, signal='frame.exit')
         dp.connect(receiver=cls.open, signal='frame.file_drop')
         dp.connect(cls.PaneMenu, f'bsm.{cls.name}.pane_menu')
 
@@ -959,7 +954,7 @@ class FileViewBase:
     @classmethod
     def initialized(cls):
         # add interface to the shell
-        pass
+        super().initialized()
 
     @classmethod
     def set_active(cls, pane):
@@ -970,6 +965,7 @@ class FileViewBase:
 
     @classmethod
     def uninitializing(cls):
+        super().uninitializing()
         # before save perspective
         for mgr in cls.panel_type.get_all_managers():
             dp.send('frame.delete_panel', panel=mgr)
@@ -981,7 +977,7 @@ class FileViewBase:
     @classmethod
     def uninitialized(cls):
         # after save perspective
-        pass
+        super().uninitialized()
 
     @classmethod
     def process_command(cls, command):

@@ -98,6 +98,8 @@ class Shell(pyshell.Shell):
         self.interp.locals['doc'] = _doc
         self.interp.locals['on'] = True
         self.interp.locals['off'] = False
+        self.interp.locals['shell'] = self
+
         dp.connect(self.writeOut, 'shell.write_out')
         dp.connect(self.runCommand, 'shell.run')
         dp.connect(self.debugPrompt, 'shell.prompt')
@@ -187,7 +189,8 @@ class Shell(pyshell.Shell):
             # as some events (e.g., ID_DEBUG_SCRIPT in editor) may be
             # called after some window (e.g., editor) has been destroyed.
             msg = 'The debugger is running.\n Turn it off first!'
-            dlg = wx.MessageDialog(self.GetTopLevelParent(), msg, 'bsmedit',
+            title = self.GetTopLevelParent().GetLabel()
+            dlg = wx.MessageDialog(self.GetTopLevelParent(), msg, title,
                                    wx.OK)
             dlg.ShowModal()
             dlg.Destroy()
@@ -910,5 +913,3 @@ class Shell(pyshell.Shell):
             self.InsertText(event.GetPosition(), event.GetText())
         event.SetText('')
 
-def bsm_initialize(frame, **kwargs):
-    Shell.Initialize(frame, **kwargs)

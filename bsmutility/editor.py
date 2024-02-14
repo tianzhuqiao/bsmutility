@@ -694,12 +694,12 @@ class PyEditorPanel(PanelBase):
         else:
             self.editor.SetWrapMode(stc.STC_WRAP_NONE)
 
-    def JumpToLine(self, line, highlight=False):
+    def JumpToLine(self, lineno, highlight=False):
         """jump to the line and make sure it is visible"""
-        self.editor.GotoLine(line)
+        self.editor.GotoLine(lineno)
         self.editor.SetFocus()
         if highlight:
-            self.editor.SelectLine(line)
+            self.editor.SelectLine(lineno)
         wx.CallLater(1, self.editor.EnsureCaretVisible)
 
     def GetCaption(self):
@@ -823,8 +823,8 @@ class PyEditorPanel(PanelBase):
             msg = f'"{filename}" has been modified. Save it first?'
             # use top level frame as parent, otherwise it may crash when
             # it is called in Destroy()
-            dlg = wx.MessageDialog(self.GetTopLevelParent(), msg, 'bsmedit',
-                                   wx.YES_NO)
+            parent = self.GetTopLevelParent()
+            dlg = wx.MessageDialog(parent, msg, parent.GetLabel(), wx.YES_NO)
             result = dlg.ShowModal() == wx.ID_YES
             dlg.Destroy()
             if result:
@@ -995,13 +995,6 @@ class Editor(FileViewBase):
 
     @classmethod
     def initialized(cls):
-        # add editor to the shell
-        dp.send(signal='shell.run',
-                command='from bsmedit.bsm.editor import Editor',
-                prompt=False,
-                verbose=False,
-                history=False)
-
         resp = dp.send('frame.get_config', group='editor', key='opened')
         if resp and resp[0][1]:
             files = resp[0][1]
@@ -1028,6 +1021,11 @@ class Editor(FileViewBase):
         dp.send('frame.set_config', group='editor', opened=files)
 
         dp.send('frame.delete_menu', path=f"File:New:Python script\tCtrl+N", id=cls.ID_NEW)
+
+        dp.disconnect(cls.OnFrameClosing, 'frame.closing')
+        dp.disconnect(cls.OnFrameClosePane, 'frame.close_pane')
+        dp.disconnect(cls.DebugPaused, 'debugger.paused')
+        dp.disconnect(cls.DebugUpdateScope, 'debugger.update_scopes')
         # delete all editors
         super().uninitializing()
 
@@ -1139,7 +1137,3 @@ class Editor(FileViewBase):
         for editor in PyEditorPanel.get_instances():
             editor.debug_paused(status)
 
-
-def bsm_initialize(frame, **kwargs):
-    """initialize the model"""
-    Editor.initialize(frame, **kwargs)

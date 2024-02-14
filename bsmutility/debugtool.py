@@ -8,6 +8,7 @@ from .bsmxpm import (run_svg, run_grey_svg, step_over_svg, step_over_grey_svg, s
                      step_into_grey_svg, step_out_svg, step_out_grey_svg, stop_svg, stop_grey_svg)
 
 from .utility import svg_to_bitmap
+from .bsminterface import Interface
 
 class StackListCtrl(wx.ListCtrl, listmix.ListCtrlAutoWidthMixin,
                     listmix.ListRowHighlighter):
@@ -105,17 +106,14 @@ class StackPanel(wx.Panel):
         dp.send(signal='debugger.set_scope', level=level)
 
 
-class DebugTool():
+class DebugTool(Interface):
     isInitialized = False
-    frame = None
     showStackPanel = True
 
     @classmethod
-    def Initialize(cls, frame, **kwargs):
-        if cls.isInitialized:
-            return
-        cls.isInitialized = True
-        cls.frame = frame
+    def initialize(cls, frame, **kwargs):
+        super().initialize(frame, **kwargs)
+
         # stack panel
         cls.panelStack = StackPanel(frame)
         dp.send('frame.add_panel',
@@ -160,12 +158,14 @@ class DebugTool():
         dp.connect(cls.OnUpdateMenuUI, 'debugtool.updateui')
         dp.connect(cls.OnDebugPaused, 'debugger.paused')
         dp.connect(cls.OnDebugEnded, 'debugger.ended')
-        dp.connect(cls.Uninitialize, 'frame.exit')
 
     @classmethod
-    def Uninitialize(cls):
+    def uninitialized(cls):
         """destroy the module"""
-        pass
+        super().uninitialized()
+        dp.disconnect(cls.OnUpdateMenuUI, 'debugtool.updateui')
+        dp.disconnect(cls.OnDebugPaused, 'debugger.paused')
+        dp.disconnect(cls.OnDebugEnded, 'debugger.ended')
 
     @classmethod
     def OnDebugPaused(cls):
@@ -181,7 +181,7 @@ class DebugTool():
         if paused and not cls.tbDebug.IsShown():
             dp.send('frame.show_panel', panel=cls.tbDebug)
 
-        if cls.showStackPanel and paused and not cls.panelStack.IsShown():
+        if cls.showStackPanel and paused and not cls.panelStack.IsShownOnScreen():
             dp.send('frame.show_panel', panel=cls.panelStack)
             # allow the use to hide the Stack panel
             cls.showStackPanel = False
@@ -214,8 +214,3 @@ class DebugTool():
 
             enable = paused and status[s]
         event.Enable(enable)
-
-
-def bsm_initialize(frame, **kwargs):
-    """module initialization"""
-    DebugTool.Initialize(frame, **kwargs)
