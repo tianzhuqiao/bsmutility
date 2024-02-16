@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import aui2 as aui
 from .bsmxpm import open_svg, refresh_svg
 from .utility import FastLoadTreeCtrl, _dict, send_data_to_shell, get_variable_name
-from .utility import svg_to_bitmap
+from .utility import svg_to_bitmap, build_tree
 from .utility import get_file_finder_name, show_file_in_finder, get_tree_item_path
 from .autocomplete import AutocompleteTextCtrl
 from .bsminterface import Interface
@@ -454,10 +454,20 @@ class TreeCtrlBase(FastLoadTreeCtrl):
             path = get_tree_item_path(path)
         return self.GetItemDataFromPath(path)
 
-    def UpdateData(self, data, refresh=True):
+    def UpdateData(self, data, refresh=True, activate=True):
         # set data to "path"
-        self.data.update(data)
-        self.Fill(self.pattern)
+        if not data:
+            return
+        self.data.update(build_tree(data))
+        if refresh:
+            self.Fill(self.pattern)
+        if activate:
+            item = self.FindItemFromPath([list(data.keys())[0]])
+            if item and item.IsOk():
+                self.EnsureVisible(item)
+                self.SelectItem(item)
+                if self.ItemHasChildren(item):
+                    self.Expand(item)
 
     def _has_pattern(self, d):
         if not isinstance(d, dict):
@@ -539,6 +549,8 @@ class TreeCtrlBase(FastLoadTreeCtrl):
     def FindItemFromPath(self, path):
         if not path:
             return None
+        if isinstance(path, str):
+            path = [path]
         item = self.GetRootItem()
         for p in path:
             child, cookie = self.GetFirstChild(item)
