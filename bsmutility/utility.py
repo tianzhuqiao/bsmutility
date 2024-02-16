@@ -223,16 +223,38 @@ def get_variable_name(text):
             return var
     return "unknown"
 
+def get_tree_item_path(name, sep='.'):
+    # get the tree path from name
+    # 'a.b.c[5]' -> ['a', 'b', 'c', '[5]']
+    path = []
+    for p in name.split(sep):
+        x = re.search(r'(\[\d+\])+', p)
+        if x and x.group() != p:
+            # array[0] -> ['array', '[0]']
+            signal = [p[:x.start(0)], x.group(0), p[x.end(0):]]
+            path += [s for s in signal if s]
+            continue
+        path.append(p)
+    return path
+
+def get_tree_item_name(path, sep='.'):
+    # get the name from tree path
+    # ['a', 'b', 'c', '[5]'] -> 'a.b.c[5]'
+    if not path:
+        return ""
+    name = path[0]
+    for p in path[1:]:
+        x = re.search(r'(\[\d+\])+', p)
+        if x and x.group() == p:
+            name += p
+            continue
+        name += sep + p
+    return name
+
 def build_tree(data, sep='.'):
     tree = dict(data)
     for k in list(tree.keys()):
-        signal = k.split(sep)
-        if len(signal) == 1:
-            # array[0] -> ['array', '[0]']
-            x = re.search(r'(\[\d+\])+', k)
-            if x and x.group() != k:
-                signal = [k[:x.start(0)], x.group(0), k[x.end(0):]]
-                signal = [s for s in signal if s]
+        signal = get_tree_item_path(k)
         if len(signal) > 1:
             d = tree
             for i in range(len(signal)-1):
@@ -240,6 +262,8 @@ def build_tree(data, sep='.'):
                     d[signal[i]] = {}
                 d = d[signal[i]]
             d[signal[-1]] = tree.pop(k)
+            if isinstance(d[signal[-1]], MutableMapping):
+                d[signal[-1]] = build_tree(d[signal[-1]])
     return tree
 
 def flatten_tree(dictionary, parent_key='', sep='.'):

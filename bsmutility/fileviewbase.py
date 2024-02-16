@@ -1,5 +1,6 @@
 import os
 import json
+from collections.abc import MutableMapping
 import wx
 import wx.py.dispatcher as dp
 from wx.lib.mixins.listctrl import ListCtrlAutoWidthMixin
@@ -11,7 +12,7 @@ import aui2 as aui
 from .bsmxpm import open_svg, refresh_svg
 from .utility import FastLoadTreeCtrl, _dict, send_data_to_shell, get_variable_name
 from .utility import svg_to_bitmap
-from .utility import get_file_finder_name, show_file_in_finder
+from .utility import get_file_finder_name, show_file_in_finder, get_tree_item_path
 from .autocomplete import AutocompleteTextCtrl
 from .bsminterface import Interface
 
@@ -447,6 +448,17 @@ class TreeCtrlBase(FastLoadTreeCtrl):
             d = d[p]
         return d
 
+    def GetData(self, path):
+        # get data from "path"
+        if isinstance(path, str):
+            path = get_tree_item_path(path)
+        return self.GetItemDataFromPath(path)
+
+    def UpdateData(self, data, refresh=True):
+        # set data to "path"
+        self.data.update(data)
+        self.Fill(self.pattern)
+
     def _has_pattern(self, d):
         if not isinstance(d, dict):
             return False
@@ -521,6 +533,7 @@ class TreeCtrlBase(FastLoadTreeCtrl):
             name = self.GetItemText(child)
             if name in self.expanded:
                 self.Expand(child)
+                break
             child, cookie = self.GetNextChild(item, cookie)
 
     def FindItemFromPath(self, path):
@@ -575,7 +588,10 @@ class TreeCtrlWithTimeStamp(TreeCtrlBase):
                 selections = self.GetSelections()
                 for sel in selections:
                     y = self.GetItemData(sel)
-                    if y != data:
+                    if hasattr(y, 'equals'):
+                        if not y.equals(data):
+                            continue
+                    elif y != data:
                         # only combine the data in the same DataFrame
                         continue
                     name = self.GetItemText(sel)
@@ -593,7 +609,7 @@ class TreeCtrlWithTimeStamp(TreeCtrlBase):
         d = self.data
         for p in path[:-1]:
             d = d[p]
-        if isinstance(d, dict):
+        if isinstance(d, MutableMapping):
             # retrieve the data for node
             d = d[path[-1]]
         return d
@@ -613,6 +629,17 @@ class TreeCtrlWithTimeStamp(TreeCtrlBase):
             return dataset
         dataname = self.GetItemText(item)
         data = dataset.loc[:, [self.timestamp_key, dataname]]
+        return data
+
+    def GetData(self, path):
+        if isinstance(path, str):
+            path = get_tree_item_path(path)
+        data = super().GetData(path)
+        if not isinstance(data, MutableMapping) and len(path) > 1:
+            if path[-1] in data:
+                data = data[path[-1]]
+            else:
+                data = None
         return data
 
     def GetPlotXLabel(self):
