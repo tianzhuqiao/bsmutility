@@ -43,9 +43,23 @@ class SuggestionsPopup(wx.Frame):
 
     class _listbox(wx.html.HtmlListBox):
         items = None
+        sel_bk_colour = wx.SystemSettings.GetColour(wx.SYS_COLOUR_HIGHLIGHT)
+        alt_row_colour = wx.SystemSettings.GetColour(wx.SYS_COLOUR_3DFACE)
+        pen_colour = wx.SystemSettings.GetColour(wx.SYS_COLOUR_3DLIGHT)
 
         def OnGetItem(self, n):
             return self.items[n]
+        def OnDrawSeparator(self, dc, rect, n):
+            pass
+        def OnDrawBackground(self, dc, rect, n):
+            if self.IsCurrent(n):
+                dc.SetBrush(wx.Brush(self.sel_bk_colour))
+                dc.SetPen(wx.TRANSPARENT_PEN)
+                dc.DrawRectangle(rect)
+            elif n%2 == 0:
+                dc.SetBrush(wx.Brush(self.alt_row_colour))
+                dc.SetPen(wx.Pen(self.pen_colour))
+                dc.DrawRectangle(rect)
 
     def SetSuggestions(self, suggestions, unformated_suggestions):
         self._suggestions.items = suggestions
@@ -180,13 +194,8 @@ class AutocompleteTextCtrl(wx.TextCtrl):
 
         elif key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER) and self.popup.Shown:
             self.skip_event = True
-
             txt = self.popup.GetSelectedSuggestion()
-            start = end = self.GetLastPosition()
-            if self.auto_comp_offset:
-                start -= self.auto_comp_offset
-            self.Replace(start, end, txt)
-            self.SetInsertionPointEnd()
+            self.ApplySuggestion(txt)
             self.popup.Hide()
             return
 
@@ -205,11 +214,19 @@ class AutocompleteTextCtrl(wx.TextCtrl):
 
         event.Skip()
 
+    def ApplySuggestion(self, text):
+        start = end = self.GetLastPosition()
+        if self.auto_comp_offset:
+            start -= self.auto_comp_offset
+        self.Replace(start, end, text)
+
+        self.SetInsertionPointEnd()
+
     def OnSuggestionClicked(self, event):
         self.skip_event = True
-        n = self.popup._suggestions.HitTest(event.Position)
-        self.Value = self.popup.GetSuggestion(n)
-        self.SetInsertionPointEnd()
+        n = self.popup._suggestions.VirtualHitTest(event.Position.y)
+        text = self.popup.GetSuggestion(n)
+        self.ApplySuggestion(text)
         wx.CallAfter(self.SetFocus)
         event.Skip()
 
@@ -217,8 +234,7 @@ class AutocompleteTextCtrl(wx.TextCtrl):
         key = event.GetKeyCode()
         if key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
             self.skip_event = True
-            self.SetValue(self.popup.GetSelectedSuggestion())
-            self.SetInsertionPointEnd()
+            self.ApplySuggestion(self.popup.GetSelectedSuggestion())
             self.popup.Hide()
         event.Skip()
 
