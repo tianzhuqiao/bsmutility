@@ -8,6 +8,7 @@ import pickle
 from pathlib import Path
 from collections.abc import MutableMapping
 import six
+import pandas as pd
 import wx
 import wx.svg
 import wx.py.dispatcher as dp
@@ -223,47 +224,52 @@ def get_variable_name(text):
             return var
     return "unknown"
 
-def get_tree_item_path(name, sep='.'):
+def get_tree_item_path(name, sep='.', has_array=True):
     # get the tree path from name
     # 'a.b.c[5]' -> ['a', 'b', 'c', '[5]']
     path = []
     for p in name.split(sep):
-        x = re.search(r'(\[\d+\])+', p)
-        if x and x.group() != p:
-            # array[0] -> ['array', '[0]']
-            signal = [p[:x.start(0)], x.group(0), p[x.end(0):]]
-            path += [s for s in signal if s]
-            continue
+        if has_array:
+            x = re.search(r'(\[\d+\])+', p)
+            if x and x.group() != p:
+                # array[0] -> ['array', '[0]']
+                signal = [p[:x.start(0)], x.group(0), p[x.end(0):]]
+                path += [s for s in signal if s]
+                continue
         path.append(p)
     return path
 
-def get_tree_item_name(path, sep='.'):
+def get_tree_item_name(path, sep='.', has_array=True):
     # get the name from tree path
     # ['a', 'b', 'c', '[5]'] -> 'a.b.c[5]'
     if not path:
         return ""
     name = path[0]
     for p in path[1:]:
-        x = re.search(r'(\[\d+\])+', p)
-        if x and x.group() == p:
-            name += p
-            continue
+        if has_array:
+            x = re.search(r'(\[\d+\])+', p)
+            if x and x.group() == p:
+                name += p
+                continue
         name += sep + p
     return name
 
 def build_tree(data, sep='.'):
     tree = dict(data)
     for k in list(tree.keys()):
-        signal = get_tree_item_path(k)
+        signal = get_tree_item_path(k, sep=sep)
+        d = tree
         if len(signal) > 1:
-            d = tree
             for i in range(len(signal)-1):
                 if not signal[i] in d:
                     d[signal[i]] = {}
                 d = d[signal[i]]
             d[signal[-1]] = tree.pop(k)
-            if isinstance(d[signal[-1]], MutableMapping):
-                d[signal[-1]] = build_tree(d[signal[-1]])
+        if isinstance(d[signal[-1]], MutableMapping):
+            d[signal[-1]] = build_tree(d[signal[-1]])
+        if isinstance(d[signal[-1]], pd.DataFrame):
+            df_tree = {c: d[signal[-1]][c].to_numpy() for c in d[signal[-1]]}
+            d[signal[-1]] = build_tree(df_tree)
     return tree
 
 def flatten_tree(dictionary, parent_key='', sep='.'):
@@ -271,8 +277,8 @@ def flatten_tree(dictionary, parent_key='', sep='.'):
     for key, value in dictionary.items():
         separator = sep
         if re.match(r'(\[\d+\])+', key):
-            sep = ''
-        new_key = parent_key + sep + key if parent_key else key
+            separator = ''
+        new_key = parent_key + separator + key if parent_key else key
         if isinstance(value, MutableMapping):
             items.extend(flatten_tree(value, new_key, sep=sep).items())
         else:

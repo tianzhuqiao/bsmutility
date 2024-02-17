@@ -11,10 +11,12 @@ import matplotlib.pyplot as plt
 import aui2 as aui
 from .bsmxpm import open_svg, refresh_svg
 from .utility import FastLoadTreeCtrl, _dict, send_data_to_shell, get_variable_name
-from .utility import svg_to_bitmap, build_tree
-from .utility import get_file_finder_name, show_file_in_finder, get_tree_item_path
+from .utility import svg_to_bitmap, build_tree, flatten_tree
+from .utility import get_file_finder_name, show_file_in_finder, \
+                     get_tree_item_path, get_tree_item_name
 from .autocomplete import AutocompleteTextCtrl
 from .bsminterface import Interface
+from .signalselsettingdlg import SignalSelSettingDlg
 
 class FindListCtrl(wx.ListCtrl):
     ID_FIND_REPLACE = wx.NewIdRef()
@@ -290,11 +292,12 @@ class TreeCtrlBase(FastLoadTreeCtrl):
     def __init__(self, parent, style=wx.TR_DEFAULT_STYLE):
         style = style | wx.TR_HAS_VARIABLE_ROW_HEIGHT | wx.TR_HIDE_ROOT |\
                 wx.TR_MULTIPLE | wx.TR_LINES_AT_ROOT
-        FastLoadTreeCtrl.__init__(self, parent, self.get_children, style=style)
+        super().__init__(parent, self.get_children, style=style)
 
         self.data = _dict()
         self.pattern = None
         self.expanded = {}
+        self.exclude_keys = []
 
         self.Bind(wx.EVT_TREE_ITEM_ACTIVATED, self.OnTreeItemActivated)
         self.Bind(wx.EVT_TREE_ITEM_MENU, self.OnTreeItemMenu)
@@ -470,7 +473,7 @@ class TreeCtrlBase(FastLoadTreeCtrl):
                     self.Expand(item)
 
     def _has_pattern(self, d):
-        if not isinstance(d, dict):
+        if not isinstance(d, MutableMapping):
             return False
         if any(self.pattern in k.lower() for k in d.keys()):
             return True
@@ -479,12 +482,15 @@ class TreeCtrlBase(FastLoadTreeCtrl):
                 return True
         return False
 
+    def _is_folder(self, d):
+        return isinstance(d, MutableMapping)
+
     def get_children(self, item):
         """ callback function to return the children of item """
         children = []
         pattern = self.pattern
         if item == self.GetRootItem():
-            children = [[k, isinstance(v, dict)]  for k, v in
+            children = [[k, self._is_folder(v)]  for k, v in
                     self.data.items() if not pattern or pattern in k.lower() or self._has_pattern(v)]
         else:
             path = self.GetItemPath(item)
@@ -494,8 +500,8 @@ class TreeCtrlBase(FastLoadTreeCtrl):
             in_path = False
             if pattern:
                 in_path = any(pattern in p for p in path)
-            children = [[k, isinstance(v, dict)]  for k, v in d.items() if not pattern or in_path or pattern in k or self._has_pattern(v)]
-
+            children = [[k, self._is_folder(v)]  for k, v in d.items() if not pattern or in_path or pattern in k or self._has_pattern(v)]
+        children = [c for c in children if c[0] not in self.exclude_keys]
         if pattern:
             self.expanded = [c for c, _ in children if pattern not in c]
         if item == self.GetRootItem() and not self.expanded and children:
@@ -564,11 +570,45 @@ class TreeCtrlBase(FastLoadTreeCtrl):
                 return None
         return item
 
+    def SelectSignal(self, items, values, config, additional=None):
+        dlg = SignalSelSettingDlg(self.GetTopLevelParent(), data=self.data,
+                                  items=items, values=values, config=config,
+                                  additional=additional)
+        if dlg.ShowModal() == wx.ID_OK:
+            settings = dlg.GetSettings()
+            df = pd.DataFrame()
+            for item in items:
+                signal = settings.get(item, '')
+                path = get_tree_item_path(signal)
+                if not signal:
+                    return None, None
+                d = self.GetData(path)
+                if d is None:
+                    return None, None
+                if len(df) > 0 and len(d) != len(df):
+                    print(f'"{signal}" has different length with others!')
+                    return None, None
+                df[item] = d
+                if self.timestamp_key not in df:
+                    timestamp = self.GetItemTimeStampFromPath(path)
+                    if timestamp is not None:
+                        if len(d) != len(timestamp):
+                            # d is a folder
+                            return None, None
+                        df.insert(loc=0, column=self.timestamp_key, value=timestamp)
+            return df, settings
+        return None, None
+
+
 class TreeCtrlWithTimeStamp(TreeCtrlBase):
     ID_EXPORT = wx.NewIdRef()
     ID_EXPORT_WITH_TIMESTAMP = wx.NewIdRef()
     ID_PLOT = wx.NewIdRef()
     timestamp_key = 'timestamp'
+
+    def __init__(self, parent, style=wx.TR_DEFAULT_STYLE):
+        super().__init__(parent, style=style)
+        self.exclude_keys = [self.timestamp_key]
 
     def GetItemMenu(self, item):
         if not item.IsOk():
@@ -587,15 +627,15 @@ class TreeCtrlWithTimeStamp(TreeCtrlBase):
         if not path:
             return
         if cmd in [self.ID_EXPORT, self.ID_EXPORT_WITH_TIMESTAMP]:
-            data = self.GetItemData(item)
             output = pd.DataFrame()
             if self.ItemHasChildren(item):
-                output = data
+                output = self.GetItemDragData(item)
                 output_name = get_variable_name(path)
             else:
+                data = self.GetItemData(item)
                 if cmd == self.ID_EXPORT_WITH_TIMESTAMP:
-                    output[self.timestamp_key] = data[self.timestamp_key]
-                output[path[-1]] = data[path[-1]]
+                    output[self.timestamp_key] = self.GetItemTimeStamp(item)
+                output[path[-1]] = data
 
                 selections = self.GetSelections()
                 for sel in selections:
@@ -603,11 +643,11 @@ class TreeCtrlWithTimeStamp(TreeCtrlBase):
                     if hasattr(y, 'equals'):
                         if not y.equals(data):
                             continue
-                    elif y != data:
+                    elif len(y) != len(data):
                         # only combine the data in the same DataFrame
                         continue
                     name = self.GetItemText(sel)
-                    output[name] = y[name]
+                    output[name] = y
 
                 if len(selections) <= 1:
                     output_name = get_variable_name(path)
@@ -617,42 +657,58 @@ class TreeCtrlWithTimeStamp(TreeCtrlBase):
         elif cmd == self.ID_PLOT:
             self.PlotItem(item)
 
-    def GetItemDataFromPath(self, path):
-        d = self.data
-        for p in path[:-1]:
-            d = d[p]
-        if isinstance(d, MutableMapping):
-            # retrieve the data for node
-            d = d[path[-1]]
-        return d
+    def GetItemTimeStampFromPath(self, path):
+        data = self.GetItemDataFromPath(path)
+        while True:
+            if isinstance(data, MutableMapping) and self.timestamp_key in data:
+                return data[self.timestamp_key]
+            if not path or len(path) <= 1:
+                return None
+            path = path[:-1]
+            data = self.GetItemDataFromPath(path)
+        return None
+
+    def GetItemTimeStamp(self, item):
+        x = None
+        parent = item
+        while parent.IsOk():
+            data = self.GetItemData(parent)
+            if self.timestamp_key in data:
+                x = data[self.timestamp_key]
+                break
+            parent = self.GetItemParent(parent)
+        return x
 
     def GetItemPlotData(self, item):
         if self.ItemHasChildren(item):
             return None, None
-        dataset = self.GetItemData(item)
-        dataname = self.GetItemText(item)
-        x = dataset[self.timestamp_key]
-        y = dataset[dataname]
+        y = self.GetItemData(item)
+        x = self.GetItemTimeStamp(item)
         return x, y
 
-    def GetItemDragData(self, item):
-        dataset = self.GetItemData(item)
-        if self.ItemHasChildren(item):
-            return dataset
-        dataname = self.GetItemText(item)
-        data = dataset.loc[:, [self.timestamp_key, dataname]]
+    def FlattenTree(self, data):
+        data = flatten_tree(data)
+        data_size = [len(data[k]) for k in data]
+        data_1d = [len(data[k].shape) <= 1 or sorted(data[k].shape)[-2] == 1 for k in data]
+        if all(data_1d) and all(d == data_size[0] for d in data_size):
+            df = pd.DataFrame()
+            for name, val in data.items():
+                if name == self.timestamp_key:
+                    continue
+                if isinstance(val, np.ndarray):
+                    val = val.flatten()
+                df[name] = val
+            if self.timestamp_key in data:
+                df.insert(0, column=self.timestamp_key, value=data[self.timestamp_key])
+            data = df
         return data
 
-    def GetData(self, path):
-        if isinstance(path, str):
-            path = get_tree_item_path(path)
-        data = super().GetData(path)
-        if not isinstance(data, MutableMapping) and len(path) > 1:
-            if path[-1] in data:
-                data = data[path[-1]]
-            else:
-                data = None
-        return data
+    def GetItemDragData(self, item):
+        name = self.GetItemText(item)
+        data = {name: self.GetItemData(item)}
+        if self.timestamp_key not in data:
+            data[self.timestamp_key] = self.GetItemTimeStamp(item)
+        return self.FlattenTree(data)
 
     def GetPlotXLabel(self):
         return "t"
