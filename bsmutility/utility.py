@@ -86,6 +86,10 @@ class FastLoadTreeCtrl(wx.TreeCtrl):
                 return False
             if self.GetItemText(child) != "...":
                 return False
+
+        self.RefreshChildren(item)
+
+    def RefreshChildren(self, item):
         # delete the '...'
         self.DeleteChildren(item)
         children = self._get_children(item)
@@ -254,7 +258,7 @@ def get_tree_item_name(path, sep='.', has_array=True):
         name += sep + p
     return name
 
-def build_tree(data, sep='.'):
+def build_tree(data, sep='.', dataframe=False):
     tree = dict(data)
     for k in list(tree.keys()):
         signal = get_tree_item_path(k, sep=sep)
@@ -267,7 +271,7 @@ def build_tree(data, sep='.'):
             d[signal[-1]] = tree.pop(k)
         if isinstance(d[signal[-1]], MutableMapping):
             d[signal[-1]] = build_tree(d[signal[-1]])
-        if isinstance(d[signal[-1]], pd.DataFrame):
+        if dataframe and isinstance(d[signal[-1]], pd.DataFrame):
             df_tree = {c: d[signal[-1]][c].to_numpy() for c in d[signal[-1]]}
             d[signal[-1]] = build_tree(df_tree)
     return tree

@@ -74,8 +74,8 @@ class SignalSelSettingDlg(wx.Dialog):
             g.Insert(PropAutoCompleteEditBox(self.completer).Label(item)
                      .Name(item).Value(cfg.get(item, '')))
         for p in additional:
-            value = cfg.get(p.GetName(), '')
-            if value:
+            value = cfg.get(p.GetName(), None)
+            if value is not None:
                 p.Value(value)
             g.Insert(p)
 
