@@ -45,41 +45,24 @@ class PropAutoCompleteEditBox(PropControl):
 
         return value
 
-
-class SignalSelSettingDlg(wx.Dialog):
-    def __init__(self, parent, data=None, items=None, values=None,
-                 config=None, additional=None, title='Settings ...',
+class SettingDlgBase(wx.Dialog):
+    def __init__(self, parent, config=None, title='Settings ...',
                  size=wx.DefaultSize, pos=wx.DefaultPosition,
                  style=wx.DEFAULT_DIALOG_STYLE|wx.RESIZE_BORDER):
         wx.Dialog.__init__(self)
         self.SetExtraStyle(wx.DIALOG_EX_CONTEXTHELP)
         self.Create(parent, title=title, pos=pos, size=size, style=style)
 
-        self.data = data
-        self.items = items or []
         self.config = config
         if '.' in self.config:
             self.config = self.config.split('.')
-        assert len(self.config) == 2
+        assert not self.config or len(self.config) == 2
 
         self.propgrid = PropGrid(self)
-        self.additional = additional or []
         g = self.propgrid
         g.Draggable(False)
-        cfg = self.LoadConfig() or {}
-        if values:
-            cfg.update(values)
-        g.Insert(PropSeparator().Label('Input'))
-        for item in items:
-            g.Insert(PropAutoCompleteEditBox(self.completer).Label(item)
-                     .Name(item).Value(cfg.get(item, '')))
-        for p in additional:
-            value = cfg.get(p.GetName(), None)
-            if value is not None:
-                p.Value(value)
-            g.Insert(p)
-
         g.SetFocus()
+
         sizer = wx.BoxSizer(wx.VERTICAL)
 
         sizer.Add(g, 1, wx.EXPAND|wx.ALL, 1)
@@ -125,18 +108,41 @@ class SignalSelSettingDlg(wx.Dialog):
 
     def GetSettings(self):
         settings = {}
-        for name in self.items:
-            p = self.propgrid.Get(name)
-            if p:
-                settings[name] = p.GetValue()
-        for p in self.additional:
+        for i in range(self.propgrid.GetCount()):
+            p = self.propgrid.Get(i)
+            if p.IsSeparator():
+                continue
             name = p.GetName()
-            p = self.propgrid.Get(name)
             if p:
                 settings[name] = p.GetValue()
 
         self.SetConfig(settings)
         return settings
+
+
+class SignalSelSettingDlg(SettingDlgBase):
+    def __init__(self, parent, data=None, items=None, values=None,
+                 config=None, additional=None, title='Settings ...',
+                 size=wx.DefaultSize, pos=wx.DefaultPosition,
+                 style=wx.DEFAULT_DIALOG_STYLE|wx.RESIZE_BORDER):
+        SettingDlgBase.__init__(self, parent, config, title, size, pos, style)
+
+        self.data = data
+        self.items = items or []
+        self.additional = additional or []
+        g = self.propgrid
+        cfg = self.LoadConfig() or {}
+        if values:
+            cfg.update(values)
+        g.Insert(PropSeparator().Label('Input'))
+        for item in items:
+            g.Insert(PropAutoCompleteEditBox(self.completer).Label(item)
+                     .Name(item).Value(cfg.get(item, '')))
+        for p in additional:
+            value = cfg.get(p.GetName(), None)
+            if value is not None:
+                p.Value(value)
+            g.Insert(p)
 
     def completer(self, query):
         path = get_tree_item_path(query)
@@ -147,4 +153,16 @@ class SignalSelSettingDlg(wx.Dialog):
         objs = [k for k in d if k.startswith(path[-1])]
         return objs, objs, len(path[-1])
 
+class PropSettingDlg(SettingDlgBase):
+    def __init__(self, parent, props=None, config=None, title='Settings ...',
+                 size=wx.DefaultSize, pos=wx.DefaultPosition,
+                 style=wx.DEFAULT_DIALOG_STYLE|wx.RESIZE_BORDER):
+        SettingDlgBase.__init__(self, parent, config, title, size, pos, style)
 
+        g = self.propgrid
+        cfg = self.LoadConfig() or {}
+        for p in props:
+            value = cfg.get(p.GetName(), None)
+            if value is not None:
+                p.Value(value)
+            g.Insert(p)
