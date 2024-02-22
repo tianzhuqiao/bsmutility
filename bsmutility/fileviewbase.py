@@ -358,7 +358,7 @@ class TreeCtrlBase(FastLoadTreeCtrl):
         if x is not None:
             df['x'] = x
         if y is not None:
-            name = self.GetItemText()
+            name = self.GetItemText(item)
             df[name] = y
         return df
 
@@ -378,6 +378,8 @@ class TreeCtrlBase(FastLoadTreeCtrl):
                 break
             path = self.GetItemPath(item)
             data = self.GetItemDragData(item)
+            if data is None:
+                continue
             objs.append(['/'.join(path[:-1]), data.to_json()])
 
         # need to explicitly allow drag
@@ -942,51 +944,6 @@ class TreeCtrlNoTimeStamp(TreeCtrlBase):
         if x is None:
             x = np.arange(0, len(y))
         return x, y
-
-    def OnTreeBeginDrag(self, event):
-        if not self.data:
-            return
-
-        ids = self.GetSelections()
-        objs = []
-        df = pd.DataFrame()
-
-        for item in ids:
-            if item == self.GetRootItem() or self.ItemHasChildren(item):
-                continue
-            if not item.IsOk():
-                break
-            path = self.GetItemPath(item)
-            if path == self.x_path:
-                # ignore x-axis data
-                continue
-            df[path[-1]] = self.GetItemData(item)
-
-        if df.empty:
-            return
-
-        x = np.arange(0, len(df))
-        if self.x_path:
-            x = self.GetItemDataFromPath(self.x_path)
-        df.insert(loc=0, column='_x',  value=x)
-
-        objs.append(['', df.to_json()])
-        # need to explicitly allow drag
-        # start drag operation
-        data = wx.TextDataObject(json.dumps(objs))
-        source = wx.DropSource(self)
-        source.SetData(data)
-        rtn = source.DoDragDrop(True)
-        if rtn == wx.DragError:
-            wx.LogError("An error occurred during drag and drop operation")
-        elif rtn == wx.DragNone:
-            pass
-        elif rtn == wx.DragCopy:
-            pass
-        elif rtn == wx.DragMove:
-            pass
-        elif rtn == wx.DragCancel:
-            pass
 
     def GetItemMenu(self, item):
         if not item.IsOk():
