@@ -273,9 +273,7 @@ class ListCtrlBase(FindListCtrl, ListCtrlAutoWidthMixin):
 
     def Load(self, data):
         self.data = data
-        self.SetItemCount(0)
-        if self.data is not None:
-            self.Fill(self.pattern)
+        self.Fill(self.pattern)
 
     def ApplyPattern(self):
         self.data_shown = self.data
@@ -285,10 +283,15 @@ class ListCtrlBase(FindListCtrl, ListCtrlAutoWidthMixin):
         if isinstance(self.pattern, str):
             self.pattern = self.pattern.lower()
             self.pattern.strip()
+
+        if self.data is None:
+            self.SetItemCount(0)
+            self.Refresh()
+            return
+
         self.ApplyPattern()
         self.SetItemCount(len(self.data_shown))
-        if self.GetItemCount():
-            self.RefreshItems(0, len(self.data_shown)-1)
+        self.Refresh()
 
 class TreeCtrlBase(FastLoadTreeCtrl):
     ID_EXPORT = wx.NewIdRef()
