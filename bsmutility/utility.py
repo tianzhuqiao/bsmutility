@@ -212,7 +212,7 @@ def get_variable_name(text):
         name = text.replace('[', '').replace(']', '')
         name = name.replace('(', '').replace(')', '')
         name = name.replace('{', '').replace('}', '')
-        name = name.replace('.', '_').replace('->', '_')
+        name = name.replace('.', '_').replace('->', '_').replace('~', '_')
         if keyword.iskeyword(name):
             name = f'{name}_'
         if not name.isidentifier():
@@ -226,7 +226,7 @@ def get_variable_name(text):
         var = _get(name)
         if var:
             return var
-    return "unknown"
+    return "_data"
 
 def get_tree_item_path(name, sep='.', has_array=True):
     # get the tree path from name
