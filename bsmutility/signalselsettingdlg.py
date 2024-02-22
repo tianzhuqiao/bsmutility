@@ -110,6 +110,8 @@ class SettingDlgBase(wx.Dialog):
         settings = {}
         for i in range(self.propgrid.GetCount()):
             p = self.propgrid.Get(i)
+            # apply the change from editing
+            p.Activated(False)
             if p.IsSeparator():
                 continue
             name = p.GetName()
