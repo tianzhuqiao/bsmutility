@@ -11,7 +11,7 @@ import pandas as pd
 from pandas.api.types import is_numeric_dtype
 import matplotlib.pyplot as plt
 import aui2 as aui
-from propgrid import PropText, PropSeparator
+from propgrid import PropText, PropSeparator, PropCheckBox
 from .bsmxpm import open_svg, refresh_svg
 from .utility import FastLoadTreeCtrl, _dict, send_data_to_shell, get_variable_name
 from .utility import svg_to_bitmap, build_tree, flatten_tree
@@ -420,30 +420,48 @@ class TreeCtrlBase(FastLoadTreeCtrl):
             return
         self.OnProcessCommand(cmd, item)
 
-    def ConvertItem(self, item):
+    def GetConvertItemProp(self, item):
+        # the configuration props used to convert an item
         text = self.GetItemText(item)
         props = [PropSeparator().Label(f'Convert "{text}" (referenced as "#") to ...'),
-                 PropText().Label("Equation").Name('equation').Value('abs(#)'),
+                 PropText().Label("Equation").Name('equation').Value('#'),
                  PropText().Label("Name").Name('name').Value(f'~{text}')]
-        dlg = PropSettingDlg(self, props=props, config='')
-        if dlg.ShowModal() == wx.ID_OK:
-            settings = dlg.GetSettings()
-            equation = settings['equation']
-            if not equation:
-                return
-            name = f"{settings['name']}" or f'~{text}'
-            data = self.GetItemData(item)
-            equation = equation.replace('#', 'data')
-            try:
-                d = eval(equation, globals(), locals())
-            except:
-                traceback.print_exc(file=sys.stdout)
-                return
-            # add the converted data to parent DataFrame
-            parent = self.GetItemParent(item)
-            dataset = self.GetItemData(parent)
-            dataset[name] = d
-            self.RefreshChildren(parent)
+        return props
+
+    def ConvertItem(self, item, equation=None, name=None, **kwargs):
+        settings = None
+        if equation is None:
+            # settings is none, get it from user
+            props = self.GetConvertItemProp(item)
+            dlg = PropSettingDlg(self, props=props, config='')
+            if dlg.ShowModal() == wx.ID_OK:
+                settings = dlg.GetSettings()
+                equation = settings.get('equation', None)
+
+        if not equation:
+            return None, settings
+
+        text = self.GetItemText(item)
+        name = name or f'~{text}'
+        data = self.GetItemData(item)
+        equation = equation.replace('#', 'data')
+        try:
+            d = eval(equation, globals(), locals())
+        except:
+            traceback.print_exc(file=sys.stdout)
+            return None, settings
+
+        # add the converted data to parent DataFrame
+        parent = self.GetItemParent(item)
+        dataset = self.GetItemData(parent)
+        dataset[name] = d
+        self.RefreshChildren(parent)
+        path = self.GetItemPath(parent)
+        new_item = self.FindItemFromPath(path+[name])
+        if new_item and new_item.IsOk():
+            self.EnsureVisible(new_item)
+            self.SetFocusedItem(new_item)
+        return new_item, settings
 
     def GetItemPlotData(self, item):
         y = self.GetItemData(item)
@@ -510,7 +528,7 @@ class TreeCtrlBase(FastLoadTreeCtrl):
         return line[0]
 
     def GetItemPath(self, item):
-        if not item.IsOk():
+        if not item.IsOk() or item == self.GetRootItem():
             return []
         text = self.GetItemText(item)
         path = [text]
@@ -607,7 +625,6 @@ class TreeCtrlBase(FastLoadTreeCtrl):
 
     def Load(self, data):
         """load the dict data"""
-        assert isinstance(data, dict)
         self.data = data
         self.Fill(self.pattern)
 
@@ -867,14 +884,32 @@ class TreeCtrlNoTimeStamp(TreeCtrlBase):
         self.x_path = None
 
     def Load(self, data):
-        self.x_path = None
         super().Load(data)
+        if self.x_path is not None:
+            # check if x_path is still in the data, clear it if not
+            x = self.GetItemDataFromPath(self.x_path)
+            if x is None:
+                self.x_path = None
 
     def Fill(self, pattern=None):
         super().Fill(pattern)
         if self.x_path:
             item = self.FindItemFromPath(self.x_path)
-            self.SetItemBold(item, True)
+            if item is not None and item.IsOk():
+                self.SetItemBold(item, True)
+
+    def GetConvertItemProp(self, item):
+        # the configuration props used to convert an item
+        props = super().GetConvertItemProp(item)
+        props.append(PropCheckBox().Label("Set as axis").Name('xaxis').Value(False))
+        return props
+
+    def ConvertItem(self, item, equation=None, name=None, **kwargs):
+        new_item, settings = super().ConvertItem(item, equation, name, **kwargs)
+        if new_item is not None and new_item.IsOk():
+            if settings is not None and settings.get('xaxis', False):
+                path = self.GetItemPath(new_item)
+                self.SetXaxisPath(path)
 
     def SetXaxisPath(self, path):
         if self.x_path == path:
