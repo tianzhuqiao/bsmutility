@@ -1020,8 +1020,6 @@ class Editor(FileViewBase):
 
         dp.send('frame.set_config', group='editor', opened=files)
 
-        dp.send('frame.delete_menu', path=f"File:New:Python script\tCtrl+N", id=cls.ID_NEW)
-
         dp.disconnect(cls.OnFrameClosing, 'frame.closing')
         dp.disconnect(cls.OnFrameClosePane, 'frame.close_pane')
         dp.disconnect(cls.DebugPaused, 'debugger.paused')

@@ -203,7 +203,7 @@ def send_data_to_shell(name, data):
             verbose=True,
             history=False)
 
-def get_variable_name(text):
+def get_variable_name(text, default='_data'):
     def _get(text):
         # array[0] -> array0
         # a->b -> a_b
@@ -226,7 +226,7 @@ def get_variable_name(text):
         var = _get(name)
         if var:
             return var
-    return "_data"
+    return default
 
 def get_tree_item_path(name, sep='.', has_array=True):
     # get the tree path from name

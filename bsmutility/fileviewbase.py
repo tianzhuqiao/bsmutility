@@ -294,12 +294,12 @@ class ListCtrlBase(FindListCtrl, ListCtrlAutoWidthMixin):
         self.Refresh()
 
 class TreeCtrlBase(FastLoadTreeCtrl):
+    """the tree control to show the hierarchy of the objects (dict)"""
     ID_EXPORT = wx.NewIdRef()
     ID_PLOT = wx.NewIdRef()
     ID_CONVERT = wx.NewIdRef()
     ID_DELETE = wx.NewIdRef()
 
-    """the tree control to show the hierarchy of the objects in the vcd"""
     def __init__(self, parent, style=wx.TR_DEFAULT_STYLE):
         style = style | wx.TR_HAS_VARIABLE_ROW_HEIGHT | wx.TR_HIDE_ROOT |\
                 wx.TR_MULTIPLE | wx.TR_LINES_AT_ROOT
@@ -317,17 +317,15 @@ class TreeCtrlBase(FastLoadTreeCtrl):
     def GetItemExportData(self, item):
         output = self.GetItemData(item)
         name = self.GetItemText(item)
-        output_name = get_variable_name(name) or '_data'
+        output_name = get_variable_name(name)
         return output_name, output
 
     def OnProcessCommand(self, cmd, item):
         # process the command from OnTreeItemMenu
-        path = self.GetItemPath(item)
-        if not path:
-            return
         if cmd in [self.ID_EXPORT]:
             output_name, output = self.GetItemExportData(item)
-            send_data_to_shell(output_name, output)
+            if output is not None:
+                send_data_to_shell(output_name, output)
         elif cmd == self.ID_DELETE:
             name = self.GetItemText(item)
             msg = f"Do you want to delete '{name}'?"
@@ -353,13 +351,18 @@ class TreeCtrlBase(FastLoadTreeCtrl):
             self.ConvertItem(item)
 
     def GetItemDragData(self, item):
+        # get the drag data for leaf node
+        if self.ItemHasChildren(item):
+            return None
+
         x, y = self.GetItemPlotData(item)
+        if y is None:
+            return None
         df = pd.DataFrame()
         if x is not None:
             df['x'] = x
-        if y is not None:
-            name = self.GetItemText(item)
-            df[name] = y
+        name = self.GetItemText(item)
+        df[name] = y
         return df
 
     def GetPlotXLabel(self):
@@ -442,6 +445,7 @@ class TreeCtrlBase(FastLoadTreeCtrl):
             if dlg.ShowModal() == wx.ID_OK:
                 settings = dlg.GetSettings()
                 equation = settings.get('equation', None)
+                name = settings.get('name', None)
 
         if not equation:
             return None, settings
@@ -469,6 +473,10 @@ class TreeCtrlBase(FastLoadTreeCtrl):
         return new_item, settings
 
     def GetItemPlotData(self, item):
+        # get plot data for leaf node
+        if self.ItemHasChildren(item):
+            return None, None
+
         y = self.GetItemData(item)
         x = np.arange(0, len(y))
         return x, y
@@ -533,15 +541,10 @@ class TreeCtrlBase(FastLoadTreeCtrl):
         return line[0]
 
     def GetItemPath(self, item):
-        if not item.IsOk() or item == self.GetRootItem():
-            return []
-        text = self.GetItemText(item)
-        path = [text]
-        parent = self.GetItemParent(item)
-
-        while parent.IsOk() and parent != self.GetRootItem():
-            path.insert(0, self.GetItemText(parent))
-            parent = self.GetItemParent(parent)
+        path = []
+        while item.IsOk() and item != self.GetRootItem():
+            path.insert(0, self.GetItemText(item))
+            item = self.GetItemParent(item)
         return path
 
     def GetItemData(self, item):
@@ -554,6 +557,8 @@ class TreeCtrlBase(FastLoadTreeCtrl):
     def GetItemDataFromPath(self, path):
         d = self.data
         for p in path:
+            if p not in d:
+                return None
             d = d[p]
         return d
 
@@ -579,8 +584,10 @@ class TreeCtrlBase(FastLoadTreeCtrl):
                     self.Expand(item)
 
     def _has_pattern(self, d):
+        # check if dict d has any children with self.pattern in key
         if not isinstance(d, MutableMapping):
             return False
+
         if any(self.pattern in k.lower() for k in d.keys()):
             return True
         for v in d.values():
@@ -589,24 +596,15 @@ class TreeCtrlBase(FastLoadTreeCtrl):
         return False
 
     def _is_folder(self, d):
+        # check if the treectrl item corresponding to data d shall be a folder
         return isinstance(d, MutableMapping)
 
     def get_children(self, item):
         """ callback function to return the children of item """
-        children = []
         pattern = self.pattern
-        if item == self.GetRootItem():
-            children = [[k, self._is_folder(v)]  for k, v in
-                    self.data.items() if not pattern or pattern in k.lower() or self._has_pattern(v)]
-        else:
-            path = self.GetItemPath(item)
-            d = self.data
-            for p in path:
-                d = d[p]
-            in_path = False
-            if pattern:
-                in_path = any(pattern in p for p in path)
-            children = [[k, self._is_folder(v)]  for k, v in d.items() if not pattern or in_path or pattern in k or self._has_pattern(v)]
+        data = self.GetItemData(item)
+        children = [[k, self._is_folder(v)]  for k, v in data.items() \
+                     if not pattern or pattern in k.lower() or self._has_pattern(v)]
         children = [c for c in children if c[0] not in self.exclude_keys]
         if pattern:
             self.expanded = [c for c, _ in children if pattern not in c]
@@ -635,15 +633,18 @@ class TreeCtrlBase(FastLoadTreeCtrl):
 
     def Fill(self, pattern=None):
         """fill the objects tree"""
-        #clear the tree control
+        # clear the tree control
         self.expanded = {}
         self.DeleteAllItems()
         if not self.data:
             return
+
+        # update the pattern
         self.pattern = pattern
         if isinstance(self.pattern, str):
             self.pattern = self.pattern.lower()
             self.pattern.strip()
+
         # add the root item
         item = self.AddRoot("root")
         # fill the top level item
@@ -657,14 +658,17 @@ class TreeCtrlBase(FastLoadTreeCtrl):
             name = self.GetItemText(child)
             if name in self.expanded:
                 self.Expand(child)
+                # only the 1st child, otherwise it may be too many items
                 break
             child, cookie = self.GetNextChild(item, cookie)
 
     def FindItemFromPath(self, path):
         if not path:
             return None
+
         if isinstance(path, str):
             path = [path]
+
         item = self.GetRootItem()
         for p in path:
             child, cookie = self.GetFirstChild(item)
@@ -714,6 +718,7 @@ class TreeCtrlWithTimeStamp(TreeCtrlBase):
 
     def __init__(self, parent, style=wx.TR_DEFAULT_STYLE):
         super().__init__(parent, style=style)
+        # hide the "timestamp"
         self.exclude_keys = [self.timestamp_key]
 
     def _has_pattern(self, d):
@@ -724,32 +729,6 @@ class TreeCtrlWithTimeStamp(TreeCtrlBase):
 
     def _is_folder(self, d):
         return super()._is_folder(d) or isinstance(d, pd.DataFrame)
-
-    def get_children(self, item):
-        """ callback function to return the children of item """
-        children = []
-        pattern = self.pattern
-        if item == self.GetRootItem():
-            children = [[k, self._is_folder(v)]  for k, v in
-                    self.data.items() if not pattern or pattern in k.lower() or self._has_pattern(v)]
-        else:
-            path = self.GetItemPath(item)
-            d = self.GetItemData(item)
-            in_path = False
-            if pattern:
-                in_path = any(pattern in p for p in path)
-            if isinstance(d, pd.DataFrame):
-                children = [[k, False]  for k in d.columns if not pattern or in_path or pattern in k]
-            else:
-                children = [[k, self._is_folder(v)]  for k, v in d.items() if not pattern or in_path or pattern in k or self._has_pattern(v)]
-        children = [c for c in children if c[0] not in self.exclude_keys]
-        if pattern:
-            self.expanded = [c for c, _ in children if pattern not in c]
-        if item == self.GetRootItem() and not self.expanded and children:
-            self.expanded = [children[0][0]]
-
-        children = [{'label': c, 'img':-1, 'imgsel':-1, 'data': None, 'is_folder': is_folder} for c, is_folder in children]
-        return children
 
     def GetItemMenu(self, item):
         menu = super().GetItemMenu(item)
@@ -785,7 +764,7 @@ class TreeCtrlWithTimeStamp(TreeCtrlBase):
             if len(selections) <= 1:
                 output_name = get_variable_name(path)
             else:
-                output_name = get_variable_name(path[:-1]) or '_data'
+                output_name = get_variable_name(path[:-1])
         return output_name, output
 
     def OnProcessCommand(self, cmd, item):
@@ -863,14 +842,16 @@ class TreeCtrlWithTimeStamp(TreeCtrlBase):
         return data
 
     def GetItemDragData(self, item):
-        dataset = self.GetItemData(item)
         if self.ItemHasChildren(item):
-            return dataset
+            return self.GetItemData(item)
         # leaf node, return the corresponding column and timestamp only
+        x, y = self.GetItemPlotData(item)
+        if x is None or y is None:
+            return None
         df = pd.DataFrame()
         name = self.GetItemText(item)
-        df[self.timestamp_key] = self.GetItemTimeStamp(item)
-        df[name] = dataset
+        df[self.timestamp_key] = x
+        df[name] = y
         return df
 
     def GetPlotXLabel(self):
@@ -932,8 +913,10 @@ class TreeCtrlNoTimeStamp(TreeCtrlBase):
                 self.SetItemBold(item, True)
 
     def GetItemPlotData(self, item):
-        y = self.GetItemData(item)
+        if self.ItemHasChildren(item):
+            return None, None
 
+        y = self.GetItemData(item)
         x = None
         if self.x_path is not None and self.GetItemPath(item) != self.x_path:
             x = self.GetItemDataFromPath(self.x_path)
@@ -1077,6 +1060,7 @@ class PanelBase(wx.Panel):
     @classmethod
     def get_all_managers(cls):
         return cls.Gcc.get_all_managers()
+
     @classmethod
     def get_active(cls):
         return cls.Gcc.get_active()
@@ -1176,7 +1160,6 @@ class FileViewBase(Interface):
     ID_PANE_CLOSE_OTHERS = wx.NewIdRef()
     ID_PANE_CLOSE_ALL = wx.NewIdRef()
 
-
     @classmethod
     def initialize(cls, frame, **kwargs):
         super().initialize(frame, **kwargs)
@@ -1204,11 +1187,6 @@ class FileViewBase(Interface):
                 cls.IDS[key] = resp[0][1]
 
     @classmethod
-    def initialized(cls):
-        # add interface to the shell
-        super().initialized()
-
-    @classmethod
     def set_active(cls, pane):
         if pane and isinstance(pane, cls.panel_type):
             if cls.panel_type.get_active() == pane:
@@ -1225,11 +1203,6 @@ class FileViewBase(Interface):
             if key not in cls.IDS:
                 continue
             dp.send('frame.delete_menu', path=menu, id=cls.IDS[key])
-
-    @classmethod
-    def uninitialized(cls):
-        # after save perspective
-        super().uninitialized()
 
     @classmethod
     def process_command(cls, command):
@@ -1262,7 +1235,7 @@ class FileViewBase(Interface):
         if not cls.check_filename(filename):
             return None
 
-        manager = cls.get_manager(num, filename)
+        manager = cls.get_manager(num, filename, active=False)
         if manager is None:
             manager = cls.panel_type(cls.frame)
             if filename:
@@ -1322,9 +1295,9 @@ class FileViewBase(Interface):
                 dp.send(signal='frame.delete_panel', panel=mgr)
 
     @classmethod
-    def get_manager(cls, num=None, filename=None):
+    def get_manager(cls, num=None, filename=None, active=True):
         manager = None
-        if num is None and filename is None:
+        if num is None and filename is None and active:
             manager = cls.panel_type.get_active()
         if num is not None:
             manager = cls.panel_type.get_manager(num)
