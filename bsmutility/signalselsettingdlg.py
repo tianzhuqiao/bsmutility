@@ -1,6 +1,8 @@
 import wx
 import wx.py.dispatcher as dp
-from propgrid import PropControl, PropGrid, TextValidator, PropSeparator
+import propgrid
+from propgrid import PropControl, PropGrid, TextValidator, PropSeparator, \
+                     PropCheckBox, PropText
 from .autocomplete import AutocompleteTextCtrl
 from .utility import get_tree_item_path
 
@@ -54,7 +56,7 @@ class SettingDlgBase(wx.Dialog):
         self.Create(parent, title=title, pos=pos, size=size, style=style)
 
         self.config = config
-        if '.' in self.config:
+        if self.config and '.' in self.config:
             self.config = self.config.split('.')
         assert not self.config or len(self.config) == 2
 
@@ -79,7 +81,7 @@ class SettingDlgBase(wx.Dialog):
         btnsizer.AddButton(btn)
         btnsizer.Realize()
 
-        sizer.Add(btnsizer, 0, wx.ALL|wx.EXPAND, 5)
+        sizer.Add(btnsizer, 0, wx.ALL|wx.EXPAND, 15)
 
         self.SetSizer(sizer)
 
@@ -117,6 +119,8 @@ class SettingDlgBase(wx.Dialog):
             name = p.GetName()
             if p:
                 settings[name] = p.GetValue()
+                if isinstance(p, PropCheckBox):
+                    settings[name] = bool(settings[name])
 
         self.SetConfig(settings)
         return settings
@@ -168,3 +172,81 @@ class PropSettingDlg(SettingDlgBase):
             if value is not None:
                 p.Value(value)
             g.Insert(p)
+
+class ConvertSettingDlg(SettingDlgBase):
+    ID_DELETE = wx.NewIdRef()
+
+    def __init__(self, parent, converts, title='Settings ...',
+                 size=wx.DefaultSize, pos=wx.DefaultPosition,
+                 style=wx.DEFAULT_DIALOG_STYLE|wx.RESIZE_BORDER):
+        SettingDlgBase.__init__(self, parent, None, title, size, pos, style)
+
+        g = self.propgrid
+        g.Draggable(True)
+        for c in converts:
+            indent = 0
+            for k, v in c.items():
+                if isinstance(v, bool):
+                    g.Insert(PropCheckBox().Label(k.capitalize()).Value(v).Indent(indent)
+                             .Draggable(indent==0))
+                else:
+                    g.Insert(PropText().Label(k.capitalize()).Value(v).Indent(indent)
+                             .Draggable(indent==0))
+                indent = 1
+
+        g.Bind(propgrid.EVT_PROP_RIGHT_CLICK, self.OnRightClick)
+        self.Bind(propgrid.EVT_PROP_DROP, self.OnDrop)
+        self.Bind(propgrid.EVT_PROP_BEGIN_DRAG, self.OnDrag)
+
+    def OnDrag(self, event):
+        prop = event.GetProp()
+        if prop.IsExpanded():
+            # not allow to move if in expanded mode
+            event.Veto()
+
+    def OnDrop(self, event):
+        prop = event.GetProp()
+        if (prop is not None) and prop.GetIndent() != 0:
+            event.Veto()
+
+    def OnRightClick(self, event):
+        prop = event.GetProp()
+        if prop.GetIndent() == 0:
+            menu = wx.Menu()
+            menu.Append(self.ID_DELETE, 'Delete')
+            cmd = self.GetPopupMenuSelectionFromUser(menu)
+            if cmd == wx.ID_NONE:
+                return
+            if cmd == self.ID_DELETE:
+                idx = self.propgrid.Index(prop)
+                # delete the group
+                self.propgrid.Delete(idx)
+                while idx < self.propgrid.GetCount():
+                    p = self.propgrid.Get(idx)
+                    if p.GetIndent() == 0:
+                        break
+                    self.propgrid.Delete(idx)
+
+    def GetSettings(self):
+        settings = []
+        convert = {}
+        for i in range(self.propgrid.GetCount()):
+            p = self.propgrid.Get(i)
+            # apply the change from editing
+            p.Activated(False)
+            if p.IsSeparator():
+                continue
+            # start of a group
+            if p.GetIndent() == 0:
+                if convert:
+                    settings.append(convert)
+                convert = {}
+            name = p.GetLabel().lower()
+            value = p.GetValue()
+            if isinstance(p, PropCheckBox):
+                value = bool(value)
+            convert[name] = value
+        # add the last group
+        if convert:
+            settings.append(convert)
+        return settings

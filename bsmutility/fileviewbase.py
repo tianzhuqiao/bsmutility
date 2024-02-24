@@ -12,14 +12,14 @@ from pandas.api.types import is_numeric_dtype
 import matplotlib.pyplot as plt
 import aui2 as aui
 from propgrid import PropText, PropSeparator, PropCheckBox
-from .bsmxpm import open_svg, refresh_svg
+from .bsmxpm import open_svg, refresh_svg, more_svg
 from .utility import FastLoadTreeCtrl, _dict, send_data_to_shell, get_variable_name
 from .utility import svg_to_bitmap, build_tree, flatten_tree
 from .utility import get_file_finder_name, show_file_in_finder, \
                      get_tree_item_path, get_tree_item_name
 from .autocomplete import AutocompleteTextCtrl
 from .bsminterface import Interface
-from .signalselsettingdlg import SignalSelSettingDlg, PropSettingDlg
+from .signalselsettingdlg import SignalSelSettingDlg, PropSettingDlg, ConvertSettingDlg
 
 class FindListCtrl(wx.ListCtrl):
     ID_FIND_REPLACE = wx.NewIdRef()
@@ -295,10 +295,14 @@ class ListCtrlBase(FindListCtrl, ListCtrlAutoWidthMixin):
 
 class TreeCtrlBase(FastLoadTreeCtrl):
     """the tree control to show the hierarchy of the objects (dict)"""
+
     ID_EXPORT = wx.NewIdRef()
     ID_PLOT = wx.NewIdRef()
     ID_CONVERT = wx.NewIdRef()
+    ID_CONVERT_CUSTOM = wx.NewIdRef()
+    ID_CONVERT_MANAGE = wx.NewIdRef()
     ID_DELETE = wx.NewIdRef()
+    IDS_CONVERT = {}
 
     def __init__(self, parent, style=wx.TR_DEFAULT_STYLE):
         style = style | wx.TR_HAS_VARIABLE_ROW_HEIGHT | wx.TR_HIDE_ROOT |\
@@ -309,10 +313,29 @@ class TreeCtrlBase(FastLoadTreeCtrl):
         self.pattern = None
         self.expanded = {}
         self.exclude_keys = []
+        self.customized_convert = []
 
         self.Bind(wx.EVT_TREE_ITEM_ACTIVATED, self.OnTreeItemActivated)
         self.Bind(wx.EVT_TREE_ITEM_MENU, self.OnTreeItemMenu)
         self.Bind(wx.EVT_TREE_BEGIN_DRAG, self.OnTreeBeginDrag)
+
+    def GetConfigGroup(self):
+        return  self.__class__.__name__
+
+    def SetConfig(self, **kwargs):
+        group = self.GetConfigGroup()
+        if not group:
+            return
+        dp.send('frame.set_config', group=group, **kwargs)
+
+    def LoadConfig(self, key):
+        group = self.GetConfigGroup()
+        if not group:
+            return
+        resp = dp.send('frame.get_config', group=group, key=key)
+        if resp and resp[0][1] is not None:
+            return resp[0][1]
+        return None
 
     def GetItemExportData(self, item):
         output = self.GetItemData(item)
@@ -349,6 +372,18 @@ class TreeCtrlBase(FastLoadTreeCtrl):
             self.PlotItem(item)
         elif cmd == self.ID_CONVERT:
             self.ConvertItem(item)
+        elif cmd == self.ID_CONVERT_CUSTOM:
+            self.AddCustomizedConvert()
+        elif cmd == self.ID_CONVERT_MANAGE:
+            self.ManageCustomizedConvert()
+        elif cmd in self.IDS_CONVERT.values():
+            # find the label of the custom conversion in dict
+            label = list(self.IDS_CONVERT.keys())[list(self.IDS_CONVERT.values()).index(cmd)]
+            converts = self.GetCustomizedConvert()
+            for c in self.GetCustomizedConvert():
+                if c['label'] == label:
+                    self.ConvertItem(item, **c)
+                    break
 
     def GetItemDragData(self, item):
         # get the drag data for leaf node
@@ -413,6 +448,15 @@ class TreeCtrlBase(FastLoadTreeCtrl):
         menu.Append(self.ID_DELETE, "Delete")
         menu.AppendSeparator()
         menu.Append(self.ID_CONVERT, "Convert to ...")
+        menu_customize = wx.Menu()
+        menu_customize.Append(self.ID_CONVERT_CUSTOM, "Add custom convert")
+        menu_customize.Append(self.ID_CONVERT_MANAGE, "Manage")
+        menu_customize.AppendSeparator()
+        for c in self.GetCustomizedConvert():
+            if c['label'] not in self.IDS_CONVERT:
+                self.IDS_CONVERT[c['label']] = wx.NewIdRef()
+            menu_customize.Append(self.IDS_CONVERT[c['label']], c['label'])
+        menu.AppendSubMenu(menu_customize, "Customize ...")
         return menu
 
     def OnTreeItemMenu(self, event):
@@ -437,7 +481,7 @@ class TreeCtrlBase(FastLoadTreeCtrl):
         return props
 
     def ConvertItem(self, item, equation=None, name=None, **kwargs):
-        settings = None
+        settings = kwargs
         if equation is None:
             # settings is none, get it from user
             props = self.GetConvertItemProp(item)
@@ -454,6 +498,7 @@ class TreeCtrlBase(FastLoadTreeCtrl):
         name = name or f'~{text}'
         data = self.GetItemData(item)
         equation = equation.replace('#', 'data')
+        name = name.replace('#', text)
         try:
             d = eval(equation, globals(), locals())
         except:
@@ -471,6 +516,37 @@ class TreeCtrlBase(FastLoadTreeCtrl):
             self.EnsureVisible(new_item)
             self.SetFocusedItem(new_item)
         return new_item, settings
+
+    def GetCustomizedConvertProp(self):
+        # the configuration props used to convert an item
+        props = [PropSeparator().Label('Convert signal (referenced as "#") to ...'),
+                 PropText().Label("Label").Name('label').Value('my conversion'),
+                 PropText().Label("Equation").Name('equation').Value('#'),
+                 PropText().Label("Name").Name('name').Value('~#')]
+        return props
+
+    def AddCustomizedConvert(self):
+        settings = None
+        # settings is none, get it from user
+        props = self.GetCustomizedConvertProp()
+        dlg = PropSettingDlg(self, props=props, config='')
+        if dlg.ShowModal() == wx.ID_OK:
+            settings = dlg.GetSettings()
+            self.customized_convert.append(settings)
+            self.SetConfig(convert=self.customized_convert)
+        return settings
+
+    def ManageCustomizedConvert(self):
+        converts = self.GetCustomizedConvert()
+        dlg = ConvertSettingDlg(self, converts)
+        if dlg.ShowModal() == wx.ID_OK:
+            settings = dlg.GetSettings()
+            self.customized_convert = settings
+            self.SetConfig(convert=self.customized_convert)
+
+    def GetCustomizedConvert(self):
+        self.customized_convert = self.LoadConfig(key='convert') or []
+        return self.customized_convert
 
     def GetItemPlotData(self, item):
         # get plot data for leaf node
@@ -603,8 +679,15 @@ class TreeCtrlBase(FastLoadTreeCtrl):
         """ callback function to return the children of item """
         pattern = self.pattern
         data = self.GetItemData(item)
+
+        in_path = False
+        if pattern:
+            path = self.GetItemPath(item)
+            in_path = any(pattern in p for p in path)
+
         children = [[k, self._is_folder(v)]  for k, v in data.items() \
-                     if not pattern or pattern in k.lower() or self._has_pattern(v)]
+                     if not pattern or in_path or pattern in k.lower() \
+                        or self._has_pattern(v)]
         children = [c for c in children if c[0] not in self.exclude_keys]
         if pattern:
             self.expanded = [c for c, _ in children if pattern not in c]
@@ -877,8 +960,8 @@ class TreeCtrlNoTimeStamp(TreeCtrlBase):
             if x is None:
                 self.x_path = None
 
-    def Fill(self, pattern=None):
-        super().Fill(pattern)
+    def RefreshChildren(self, item):
+        super().RefreshChildren(item)
         if self.x_path:
             item = self.FindItemFromPath(self.x_path)
             if item is not None and item.IsOk():
@@ -887,6 +970,12 @@ class TreeCtrlNoTimeStamp(TreeCtrlBase):
     def GetConvertItemProp(self, item):
         # the configuration props used to convert an item
         props = super().GetConvertItemProp(item)
+        props.append(PropCheckBox().Label("Set as axis").Name('xaxis').Value(False))
+        return props
+
+    def GetCustomizedConvertProp(self):
+        # the configuration props used to convert an item
+        props = super().GetCustomizedConvertProp()
         props.append(PropCheckBox().Label("Set as axis").Name('xaxis').Value(False))
         return props
 
@@ -1012,8 +1101,11 @@ class PanelBase(wx.Panel):
     Gcc = None
     ID_OPEN = wx.NewIdRef()
     ID_REFRESH = wx.NewIdRef()
-    def __init__(self, parent, filename=None):
-        wx.Panel.__init__(self, parent)
+    def __init__(self, parent, filename=None, autohide=True, **kwargs):
+        wx.Panel.__init__(self, parent, **kwargs)
+        if autohide:
+            # Hide the window for now, it will be shown when add to AUI manager
+            self.Hide()
 
         self.init()
 
@@ -1099,6 +1191,9 @@ class PanelBase(wx.Panel):
         return
 
 class PanelNotebookBase(PanelBase):
+    ID_MORE = wx.NewIdRef()
+    ID_CONVERT_CUSTOM = wx.NewIdRef()
+    ID_CONVERT_MANAGE = wx.NewIdRef()
 
     def init(self):
         self.tb = aui.AuiToolBar(self, -1, agwStyle=aui.AUI_TB_OVERFLOW)
@@ -1115,7 +1210,7 @@ class PanelNotebookBase(PanelBase):
         self.box.Add(self.tb, 0, wx.EXPAND, 5)
         self.box.Add(self.notebook, 1, wx.EXPAND)
 
-        self.box.Fit(self)
+        #self.box.Fit(self)
         self.SetSizer(self.box)
 
         super().init()
@@ -1130,6 +1225,10 @@ class PanelNotebookBase(PanelBase):
         self.tb.AddTool(self.ID_REFRESH, "Refresh", refresh_bmp,
                         wx.NullBitmap, wx.ITEM_NORMAL,
                         "Refresh file")
+
+        self.tb.AddStretchSpacer()
+        self.tb.AddTool(self.ID_MORE, "More", svg_to_bitmap(more_svg, win=self),
+                        wx.NullBitmap, wx.ITEM_NORMAL, "More")
 
     def init_pages(self):
         return
@@ -1146,6 +1245,19 @@ class PanelNotebookBase(PanelBase):
         panel.SetSizer(szAll)
         return panel, search, ctrl
 
+    def OnProcessCommand(self, event):
+        eid = event.GetId()
+        if eid == self.ID_MORE:
+            menu = wx.Menu()
+            menu.Append(self.ID_CONVERT_CUSTOM, "Add custom convert")
+            menu.Append(self.ID_CONVERT_MANAGE, "Manage custom convert")
+            self.PopupMenu(menu)
+        elif eid == self.ID_CONVERT_CUSTOM:
+            self.tree.AddCustomizedConvert()
+        elif eid == self.ID_CONVERT_MANAGE:
+            self.tree.ManageCustomizedConvert()
+        else:
+            super().OnProcessCommand(event)
 
 class FileViewBase(Interface):
     name = None
