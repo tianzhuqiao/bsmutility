@@ -43,15 +43,17 @@ class SuggestionsPopup(wx.Frame):
 
     class _listbox(wx.html.HtmlListBox):
         items = None
-        sel_bk_colour = wx.SystemSettings.GetColour(wx.SYS_COLOUR_HIGHLIGHT)
-        alt_row_colour = wx.SystemSettings.GetColour(wx.SYS_COLOUR_3DFACE)
-        pen_colour = wx.SystemSettings.GetColour(wx.SYS_COLOUR_3DLIGHT)
 
         def OnGetItem(self, n):
             return self.items[n]
+
         def OnDrawSeparator(self, dc, rect, n):
             pass
+
         def OnDrawBackground(self, dc, rect, n):
+            sel_bk_colour = wx.SystemSettings.GetColour(wx.SYS_COLOUR_HIGHLIGHT)
+            alt_row_colour = wx.SystemSettings.GetColour(wx.SYS_COLOUR_3DFACE)
+            pen_colour = wx.SystemSettings.GetColour(wx.SYS_COLOUR_3DLIGHT)
             if self.IsCurrent(n):
                 dc.SetBrush(wx.Brush(self.sel_bk_colour))
                 dc.SetPen(wx.TRANSPARENT_PEN)
@@ -85,8 +87,7 @@ class SuggestionsPopup(wx.Frame):
 
     def CursorEnd(self):
         if self.IsShown():
-            self._suggestions.SetSelection(self._suggestions.GetItemCount() -
-                                           1)
+            self._suggestions.SetSelection(self._suggestions.GetItemCount() - 1)
 
     def GetSelectedSuggestion(self):
         return self._unformated_suggestions[self._suggestions.GetSelection()]
