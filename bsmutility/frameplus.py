@@ -315,7 +315,7 @@ class FramePlus(wx.Frame):
             # default panel settings. dock_row = -1 to add the pane to the
             # dock with same direction and layer, and dock_pos = 99 (a large
             # number) to add it to the right side
-            auipaneinfo = aui.AuiPaneInfo().BestSize((300, 300)).Snappable()\
+            auipaneinfo = aui.AuiPaneInfo().BestSize((600, 600)).Snappable()\
                           .Dockable().MinimizeButton(True).MaximizeButton(True)\
                           .Row(-1).Position(99)
 
