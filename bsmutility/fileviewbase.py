@@ -852,7 +852,7 @@ class TreeCtrlWithTimeStamp(TreeCtrlBase):
 
     def OnProcessCommand(self, cmd, item):
         if cmd in [self.ID_EXPORT_WITH_TIMESTAMP]:
-            output_name, output = pd.DataFrame()
+            output_name, output = self.GetItemExportData(item)
             if isinstance(output, pd.DataFrame):
                 output.insert(0, column=self.timestamp_key, value=self.GetItemTimeStamp(item))
 
