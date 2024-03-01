@@ -985,6 +985,7 @@ class TreeCtrlNoTimeStamp(TreeCtrlBase):
             if settings is not None and settings.get('xaxis', False):
                 path = self.GetItemPath(new_item)
                 self.SetXaxisPath(path)
+        return new_item, settings
 
     def SetXaxisPath(self, path):
         if self.x_path == path:
