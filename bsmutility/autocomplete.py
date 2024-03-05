@@ -55,12 +55,12 @@ class SuggestionsPopup(wx.Frame):
             alt_row_colour = wx.SystemSettings.GetColour(wx.SYS_COLOUR_3DFACE)
             pen_colour = wx.SystemSettings.GetColour(wx.SYS_COLOUR_3DLIGHT)
             if self.IsCurrent(n):
-                dc.SetBrush(wx.Brush(self.sel_bk_colour))
+                dc.SetBrush(wx.Brush(sel_bk_colour))
                 dc.SetPen(wx.TRANSPARENT_PEN)
                 dc.DrawRectangle(rect)
             elif n%2 == 0:
-                dc.SetBrush(wx.Brush(self.alt_row_colour))
-                dc.SetPen(wx.Pen(self.pen_colour))
+                dc.SetBrush(wx.Brush(alt_row_colour))
+                dc.SetPen(wx.Pen(pen_colour))
                 dc.DrawRectangle(rect)
 
     def SetSuggestions(self, suggestions, unformated_suggestions):
