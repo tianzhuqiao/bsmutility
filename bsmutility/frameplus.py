@@ -338,8 +338,6 @@ class FramePlus(wx.Frame):
         self._mgr.AddPane(panel, auipaneinfo, target=targetpane)
         if maximize:
             self._mgr.MaximizePane(auipaneinfo)
-        if targetpane:
-            self.ShowPanel(targetpane.window, targetpane.IsShown())
         self.ShowPanel(panel, active)
         # add the menu item to show/hide the panel
         if showhidemenu:
