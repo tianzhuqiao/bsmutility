@@ -830,13 +830,15 @@ class TreeCtrlWithTimeStamp(TreeCtrlBase):
             output_name = get_variable_name(path)
         else:
             data = self.GetItemData(item)
+            data_x = self.GetItemTimeStamp(item)
             output[path[-1]] = data
 
             selections = self.GetSelections()
             for sel in selections:
                 y = self.GetItemData(sel)
-                if hasattr(y, 'equals'):
-                    if not y.equals(data):
+                x = self.GetItemTimeStamp(sel)
+                if hasattr(x, 'equals'):
+                    if not x.equals(data_x):
                         continue
                 elif len(y) != len(data):
                     # only combine the data in the same DataFrame
