@@ -183,20 +183,8 @@ def send_data_to_shell(name, data):
     if not name.isidentifier():
         return False
 
-    filename = get_temp_file('_data.pickle')
-
-    with open(filename, 'wb') as fp:
-        pickle.dump(data, fp)
-    dp.send('shell.run',
-            command=f'with open("{filename}", "rb") as fp:\n    {name} = pickle.load(fp)',
-            prompt=False,
-            verbose=False,
-            history=False)
-    dp.send('shell.run',
-            command='',
-            prompt=False,
-            verbose=False,
-            history=False)
+    # add the data directly to shell's locals
+    dp.send('shell.update_locals', **{name: data})
     dp.send('shell.run',
             command=f'{name}',
             prompt=True,

@@ -113,6 +113,8 @@ class Shell(pyshell.Shell):
         dp.connect(self.OnActivatePanel, 'frame.activate_panel')
         dp.connect(self.OnActivate, 'frame.activate')
         dp.connect(self.OnFrameClosing, 'frame.closing')
+        dp.connect(receiver=self.OnGetLocals, signal='shell.get_locals')
+        dp.connect(receiver=self.OnUpdateLocals, signal='shell.update_locals')
 
         self.CmdKeyAssign(ord('Z'), wx.stc.STC_SCMOD_CTRL, wx.stc.STC_CMD_UNDO)
         self.CmdKeyAssign(ord('Z'), wx.stc.STC_SCMOD_CTRL | wx.stc.STC_SCMOD_SHIFT, wx.stc.STC_CMD_REDO)
@@ -139,6 +141,13 @@ class Shell(pyshell.Shell):
         self.SetAcceleratorTable(accel_tbl)
 
         self.LoadConfig()
+
+    def OnGetLocals(self):
+        return self.interp.locals
+
+    def OnUpdateLocals(self, signal, sender, **kwargs):
+        return self.interp.locals.update(kwargs)
+
     def SetConfig(self):
         dp.send('frame.set_config', group='shell', wrap=self.GetWrapMode() != wx.stc.STC_WRAP_NONE)
 
@@ -180,6 +189,8 @@ class Shell(pyshell.Shell):
         dp.disconnect(self.OnActivatePanel, 'frame.activate_panel')
         dp.disconnect(self.OnActivate, 'frame.activate')
         dp.disconnect(self.OnFrameClosing, 'frame.closing')
+        dp.disconnect(receiver=self.OnGetLocals, signal='shell.get_locals')
+        dp.disconnect(receiver=self.OnUpdateLocals, signal='shell.update_locals')
         super().Destroy()
 
     def OnFrameClosing(self, event):
