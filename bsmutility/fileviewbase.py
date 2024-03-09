@@ -500,7 +500,14 @@ class TreeCtrlBase(FastLoadTreeCtrl):
         equation = equation.replace('#', 'data')
         name = name.replace('#', text)
         try:
-            d = eval(equation, globals(), locals())
+            # get the locals from shell, to reuse the functions/modules
+            resp = dp.send('shell.get_locals')
+            if resp:
+                local = resp[0][1]
+                local.update(locals())
+            else:
+                local = locals()
+            d = eval(equation, globals(), local)
         except:
             traceback.print_exc(file=sys.stdout)
             return None, settings
@@ -508,10 +515,15 @@ class TreeCtrlBase(FastLoadTreeCtrl):
         # add the converted data to parent DataFrame
         parent = self.GetItemParent(item)
         dataset = self.GetItemData(parent)
-        dataset[name] = d
+        name = name.split(',')
+        if len(name) == 1:
+            dataset[name[0]] = d
+        else:
+            for i, n in enumerate(name):
+                dataset[n] = d[i]
         self.RefreshChildren(parent)
         path = self.GetItemPath(parent)
-        new_item = self.FindItemFromPath(path+[name])
+        new_item = self.FindItemFromPath(path+[name[0]])
         if new_item and new_item.IsOk():
             self.EnsureVisible(new_item)
             self.SetFocusedItem(new_item)
@@ -1297,7 +1309,7 @@ class FileViewBase(Interface):
         for key, menu in cls.get_menu():
             resp = dp.send(signal='frame.add_menu',
                            path=menu,
-                            rxsignal=f'bsm.{cls.name}')
+                           rxsignal=f'bsm.{cls.name}')
             if resp:
                 cls.IDS[key] = resp[0][1]
 
