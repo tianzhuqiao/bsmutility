@@ -1,3 +1,4 @@
+import json
 import six
 import wx
 import wx.py.dispatcher as dp
@@ -70,13 +71,35 @@ class AuiManagerPlus(aui.AuiManager):
         # main frame
         event.Skip()
 
+class MultiDimensionalArrayEncoder(json.JSONEncoder):
+    def encode(self, o):
+        def hint_tuples(item):
+            if isinstance(item, tuple):
+                return {'__tuple__': True, 'items': item}
+            if isinstance(item, list):
+                return [hint_tuples(e) for e in item]
+            if isinstance(item, dict):
+                return {key: hint_tuples(value) for key, value in item.items()}
+            else:
+                return item
+
+        return super().encode(hint_tuples(o))
+
+def hinted_tuple_hook(obj):
+    if '__tuple__' in obj:
+        return tuple(obj['items'])
+    else:
+        return obj
+
+
 class FramePlus(wx.Frame):
+    CONFIG_NAME='bsm'
     def __init__(self,
                  parent,
                  title="",
                  pos=wx.DefaultPosition,
                  size=wx.DefaultSize,
-                 style=wx.DEFAULT_FRAME_STYLE | wx.TAB_TRAVERSAL):
+                 style=wx.DEFAULT_FRAME_STYLE | wx.TAB_TRAVERSAL, **kwargs):
         wx.Frame.__init__(self,
                           parent,
                           title=title,
@@ -89,6 +112,13 @@ class FramePlus(wx.Frame):
         self.paneAddon = {}
         self.paneMenu = {}
         self._pane_num = 0
+
+        # persistent configuration
+        conf = kwargs.get('config', self.CONFIG_NAME)
+        self.config = wx.FileConfig(conf, style=wx.CONFIG_USE_LOCAL_FILE)
+
+        self.closing = False
+
         dp.connect(self.AddMenu, 'frame.add_menu')
         dp.connect(self.DeleteMenu, 'frame.delete_menu')
         dp.connect(self.AddPanel, 'frame.add_panel')
@@ -96,9 +126,83 @@ class FramePlus(wx.Frame):
         dp.connect(self.ShowPanel, 'frame.show_panel')
         dp.connect(self.TogglePanel, 'frame.check_menu')
         dp.connect(self.UpdateMenu, 'frame.update_menu')
+        dp.connect(self.SetConfig, 'frame.set_config')
+        dp.connect(self.GetConfig, 'frame.get_config')
         self.Bind(wx.EVT_CLOSE, self.OnClose)
 
+    def SetConfig(self, group, **kwargs):
+        if not group.startswith('/'):
+            group = '/' + group
+        for key, value in six.iteritems(kwargs):
+            if key in ['signal', 'sender']:
+                # reserved key for dp.send
+                continue
+            if not isinstance(value, str):
+                # add sign to indicate that the value needs to be deserialize
+                enc = MultiDimensionalArrayEncoder()
+                value = '__bsm__' + enc.encode(value)
+            self.config.SetPath(group)
+            self.config.Write(key, value)
+
+    def GetConfig(self, group, key=None):
+        if not group.startswith('/'):
+            group = '/' + group
+        if self.config.HasGroup(group):
+            self.config.SetPath(group)
+            if key is None:
+                rst = {}
+                more, k, index = self.config.GetFirstEntry()
+                while more:
+                    value = self.config.Read(k)
+                    if value.startswith('__bsm__'):
+                        value = json.loads(value[7:], object_hook=hinted_tuple_hook)
+                    rst[k] = value
+                    more, k, index = self.config.GetNextEntry(index)
+                return rst
+
+            if self.config.HasEntry(key):
+                value = self.config.Read(key)
+                if value.startswith('__bsm__'):
+                    value = json.loads(value[7:], object_hook=hinted_tuple_hook)
+                return value
+        return None
+
+    def LoadPerspective(self):
+        perspective = self.GetConfig('mainframe', 'perspective')
+        if perspective and not wx.GetKeyState(wx.WXK_SHIFT):
+            sz = self.GetConfig('mainframe', 'frame_size')
+            pos = self.GetConfig('mainframe', 'frame_pos')
+            if sz is not None and pos is not None:
+                self.SetSize(sz)
+                self.SetPosition(pos)
+            self._mgr.LoadPerspective(perspective)
+            self.UpdatePaneMenuLabel()
+
+    def UpdatePaneMenuLabel(self):
+        # update the menu
+        for (pid, panel) in six.iteritems(self.paneAddon):
+            pathlist = panel['path'].split(':')
+            menuitem = self.GetMenu(pathlist[:-1])
+            if not menuitem:
+                continue
+            pane = self._mgr.GetPane(panel['panel'])
+            item = menuitem.FindItemById(pid)
+            if item and pane.caption != item.GetItemLabelText():
+                item.SetItemLabel(pane.caption)
+
     def OnClose(self, event):
+        dp.send('frame.closing', event=event)
+        if event.GetVeto():
+            return
+        self.closing = True
+        dp.send('frame.exiting')
+        sz = self.GetSize()
+        pos = self.GetPosition()
+        self.SetConfig('mainframe', frame_size=(sz[0], sz[1]), frame_pos=(pos[0], pos[1]))
+        self.SetConfig('mainframe', perspective=self._mgr.SavePerspective())
+        dp.send('frame.exit')
+        self.config.Flush()
+
         self._mgr.UnInit()
         #del self._mgr
         event.Skip()
