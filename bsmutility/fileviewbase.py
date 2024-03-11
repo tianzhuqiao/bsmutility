@@ -314,10 +314,13 @@ class TreeCtrlBase(FastLoadTreeCtrl):
         self.expanded = {}
         self.exclude_keys = []
         self.customized_convert = []
+        self.graph_drop = False
 
         self.Bind(wx.EVT_TREE_ITEM_ACTIVATED, self.OnTreeItemActivated)
         self.Bind(wx.EVT_TREE_ITEM_MENU, self.OnTreeItemMenu)
         self.Bind(wx.EVT_TREE_BEGIN_DRAG, self.OnTreeBeginDrag)
+
+        dp.connect(receiver=self.OnGraphDrop, signal='graph.drop')
 
     def GetConfigGroup(self):
         return  self.__class__.__name__
@@ -403,6 +406,9 @@ class TreeCtrlBase(FastLoadTreeCtrl):
     def GetPlotXLabel(self):
         return ""
 
+    def OnGraphDrop(self, axes, allowed):
+        self.graph_drop = allowed
+
     def OnTreeBeginDrag(self, event):
         if not self.data:
             return
@@ -415,27 +421,25 @@ class TreeCtrlBase(FastLoadTreeCtrl):
             if not item.IsOk():
                 break
             path = self.GetItemPath(item)
-            data = self.GetItemDragData(item)
-            if data is None:
-                continue
-            objs.append(['/'.join(path[:-1]), data.to_json()])
+            objs.append('/'.join(path))
 
         # need to explicitly allow drag
         # start drag operation
-        data = wx.TextDataObject(json.dumps({'lines': objs, 'xlabel': self.GetPlotXLabel()}))
+        self.graph_drop = False
+        data = wx.TextDataObject(json.dumps(objs))
         source = wx.DropSource(self)
         source.SetData(data)
         rtn = source.DoDragDrop(True)
         if rtn == wx.DragError:
             wx.LogError("An error occurred during drag and drop operation")
-        elif rtn == wx.DragNone:
-            pass
-        elif rtn == wx.DragCopy:
-            pass
-        elif rtn == wx.DragMove:
-            pass
-        elif rtn == wx.DragCancel:
-            pass
+        else:
+            if self.graph_drop:
+                for item in ids:
+                    if item == self.GetRootItem() or self.ItemHasChildren(item):
+                        continue
+                    if not item.IsOk():
+                        break
+                    self.PlotItem(item)
 
     def GetItemMenu(self, item):
         if not item.IsOk():
