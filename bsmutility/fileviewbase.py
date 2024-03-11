@@ -501,8 +501,48 @@ class TreeCtrlBase(FastLoadTreeCtrl):
         text = self.GetItemText(item)
         name = name or f'~{text}'
         data = self.GetItemData(item)
-        equation = equation.replace('#', 'data')
         name = name.replace('#', text)
+
+        d = self.doConvert([self.GetItemPath(item)], equation)
+
+        # add the converted data to parent DataFrame
+        parent = self.GetItemParent(item)
+        dataset = self.GetItemData(parent)
+        name = [n.strip() for n in name.split(',')]
+        if len(name) == 1:
+            dataset[name[0]] = d
+        else:
+            for i, n in enumerate(name):
+                dataset[n] = d[i]
+        self.RefreshChildren(parent)
+        path = self.GetItemPath(parent)
+        new_item = []
+        for n in name:
+            tmp = self.FindItemFromPath(path+[n])
+            if tmp is not None:
+                new_item.append(tmp)
+
+        if len(new_item) > 0 and new_item[0].IsOk():
+            self.EnsureVisible(new_item[0])
+            self.SetFocusedItem(new_item[0])
+        return new_item, settings
+
+    def doConvert(self, paths, equation):
+        # calculate equation(paths)
+        # paths are path of input items
+        # and equation may look like foo(#1, #2, #3, ...), e.g., where #1 will
+        # be replaced with data from paths[0], etc.
+
+        data = [self.GetItemDataFromPath(path) for path in paths]
+        if len(paths) == 1:
+            # the data is either '#1'
+            equation = equation.replace('#1', 'data[0]')
+            # or '#'
+            equation = equation.replace('#', 'data[0]')
+        else:
+            for i in range(len(paths)):
+                equation = equation.replace(f'#{i}', f'data[{i}]')
+
         try:
             # get the locals from shell, to reuse the functions/modules
             resp = dp.send('shell.get_locals')
@@ -512,26 +552,11 @@ class TreeCtrlBase(FastLoadTreeCtrl):
             else:
                 local = locals()
             d = eval(equation, globals(), local)
+            return d
         except:
             traceback.print_exc(file=sys.stdout)
-            return None, settings
 
-        # add the converted data to parent DataFrame
-        parent = self.GetItemParent(item)
-        dataset = self.GetItemData(parent)
-        name = name.split(',')
-        if len(name) == 1:
-            dataset[name[0]] = d
-        else:
-            for i, n in enumerate(name):
-                dataset[n] = d[i]
-        self.RefreshChildren(parent)
-        path = self.GetItemPath(parent)
-        new_item = self.FindItemFromPath(path+[name[0]])
-        if new_item and new_item.IsOk():
-            self.EnsureVisible(new_item)
-            self.SetFocusedItem(new_item)
-        return new_item, settings
+        return None
 
     def GetCustomizedConvertProp(self):
         # the configuration props used to convert an item
@@ -999,9 +1024,9 @@ class TreeCtrlNoTimeStamp(TreeCtrlBase):
 
     def ConvertItem(self, item, equation=None, name=None, **kwargs):
         new_item, settings = super().ConvertItem(item, equation, name, **kwargs)
-        if new_item is not None and new_item.IsOk():
+        if len(new_item) == 1 and new_item[0].IsOk():
             if settings is not None and settings.get('xaxis', False):
-                path = self.GetItemPath(new_item)
+                path = self.GetItemPath(new_item[0])
                 self.SetXaxisPath(path)
         return new_item, settings
 
