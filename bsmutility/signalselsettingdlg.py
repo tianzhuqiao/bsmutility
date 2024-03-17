@@ -182,15 +182,20 @@ class ConvertSettingDlg(SettingDlgBase):
         SettingDlgBase.__init__(self, parent, None, title, size, pos, style)
 
         g = self.propgrid
+        g.GetArtProvider().SetTitleWidth(200)
         g.Draggable(True)
         for c in converts:
             indent = 0
             for k, v in c.items():
+                if isinstance(v, (tuple, list)):
+                    v = ','.join(v)
+                label = k
+                label = label.replace('_', ' ').capitalize()
                 if isinstance(v, bool):
-                    g.Insert(PropCheckBox().Label(k.capitalize()).Value(v).Indent(indent)
+                    g.Insert(PropCheckBox().Label(label).Name(k).Value(v).Indent(indent)
                              .Draggable(indent==0))
                 else:
-                    g.Insert(PropText().Label(k.capitalize()).Value(v).Indent(indent)
+                    g.Insert(PropText().Label(label).Name(k).Value(v).Indent(indent)
                              .Draggable(indent==0))
                 indent = 1
 
@@ -241,7 +246,7 @@ class ConvertSettingDlg(SettingDlgBase):
                 if convert:
                     settings.append(convert)
                 convert = {}
-            name = p.GetLabel().lower()
+            name = p.GetName()
             value = p.GetValue()
             if isinstance(p, PropCheckBox):
                 value = bool(value)
