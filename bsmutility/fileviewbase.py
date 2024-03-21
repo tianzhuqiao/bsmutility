@@ -328,6 +328,8 @@ class TreeCtrlBase(FastLoadTreeCtrl):
                                     'equation': 'np.deg2rad(#1)',
                                     'force_select_signal': False}]
         self.customized_convert = []
+        self._converted_item = {}
+
         self.graph_drop = False
 
         self.Bind(wx.EVT_TREE_ITEM_ACTIVATED, self.OnTreeItemActivated)
@@ -384,6 +386,11 @@ class TreeCtrlBase(FastLoadTreeCtrl):
                         d_parent.drop(columns=[name], inplace=True)
                     elif isinstance(d_parent, MutableMapping):
                         d_parent.pop(name, None)
+                    # delete it from the converted item
+                    fullname = self.GetItemName(item)
+                    if fullname in self._converted_item:
+                        self._converted_item.pop(fullname, None)
+
                 self.RefreshChildren(parent)
         elif cmd == self.ID_PLOT:
             self.PlotItem(item)
@@ -522,13 +529,13 @@ class TreeCtrlBase(FastLoadTreeCtrl):
 
         if equation is None or force_select_signal:
             # settings is none, get it from user
+            start = ''
             if parent != self.GetRootItem():
                 # limit the signal to be children of parent
                 start = self.GetItemName(parent)
             values = {f'{inputs[i]}': settings.get(f'{inputs[i]}', '') for i in range(N_IN)}
             values['equation'] = equation
             values['outputs'] = outputs
-
             additional = self.GetConvertItemProp(item, inputs, outputs.split(','))
             df_in, settings = self.SelectSignal(items=inputs,
                                             values=values,
@@ -546,8 +553,11 @@ class TreeCtrlBase(FastLoadTreeCtrl):
             text = self.GetItemText(item)
             outputs = outputs or f'~{text}'
             outputs = outputs.replace('#', text)
-        print(settings)
+
         d = self.doConvertFromSetting(settings)
+
+        if d is None:
+            return None, settings
 
         # add the converted data to parent DataFrame (same level as item)
         dataset = self.GetItemData(parent)
@@ -568,7 +578,12 @@ class TreeCtrlBase(FastLoadTreeCtrl):
         if len(new_item) > 0 and new_item[0].IsOk():
             self.EnsureVisible(new_item[0])
             self.SetFocusedItem(new_item[0])
-        print(settings)
+
+        # save the converted item
+        for idx in range(0, len(new_item)):
+            name = self.GetItemName(new_item[idx])
+            self._converted_item[name] = [(len(new_item), idx), settings]
+
         return new_item, settings
 
     def ConvertItem(self, item, equation=None, name=None, **kwargs):
@@ -586,13 +601,11 @@ class TreeCtrlBase(FastLoadTreeCtrl):
             signal = settings.get(inputs[i], None)
             if N_IN == 1 and not signal:
                 signal = settings.get('#', None)
-            print(signal)
             if signal is None:
                 return None
             paths.append(get_tree_item_path(f'{signal}'))
             # replace input name (e.g., #w) with input index (e.g., #1)
             equation = equation.replace(f'#{inputs[i].lstrip("#")}', f'#{i+1}')
-        print(paths, equation)
         return self.doConvert(paths, equation)
 
     def doConvert(self, paths, equation):
@@ -898,7 +911,7 @@ class TreeCtrlBase(FastLoadTreeCtrl):
         # remove the "start" from values
         if start:
             for k, v in values.items():
-                if not v.startswith(start):
+                if not v or not v.startswith(start):
                     continue
                 # remove '{start}.'
                 values[k] = v[len(start):].lstrip('.')

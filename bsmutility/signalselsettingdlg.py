@@ -140,7 +140,7 @@ class SignalSelSettingDlg(SettingDlgBase):
         cfg = self.LoadConfig() or {}
         if values:
             cfg.update(values)
-        g.Insert(PropSeparator().Label('Input'))
+        g.Insert(PropSeparator().Label('Input(s)'))
         for item in items:
             g.Insert(PropAutoCompleteEditBox(self.completer).Label(item)
                      .Name(item).Value(cfg.get(item, '')))
