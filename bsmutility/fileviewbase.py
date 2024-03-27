@@ -21,6 +21,7 @@ from .autocomplete import AutocompleteTextCtrl
 from .bsminterface import Interface
 from .signalselsettingdlg import SignalSelSettingDlg, PropSettingDlg, ConvertSettingDlg
 from .quaternion import Quaternion
+from .configfile import ConfigFile
 
 class FindListCtrl(wx.ListCtrl):
     ID_FIND_REPLACE = wx.NewIdRef()
@@ -320,15 +321,19 @@ class TreeCtrlBase(FastLoadTreeCtrl):
                                     'equation': 'Quaternion(#w, #x, #y, #z).to_angle()',
                                     'force_select_signal': True},
                                 {'label': 'Radian to degree',
+                                    'inputs': ['x'],
                                     'outputs': '#_deg',
-                                    'equation': 'np.rad2deg(#1)',
+                                    'equation': 'np.rad2deg(#x)',
                                     'force_select_signal': False},
                                 {'label': 'Degree to radian',
+                                    'inputs': ['x'],
                                     'outputs': '#_rad',
-                                    'equation': 'np.deg2rad(#1)',
+                                    'equation': 'np.deg2rad(#x)',
                                     'force_select_signal': False}]
         self.customized_convert = []
         self._converted_item = {}
+        self.config_file = None
+        self.filename = None
 
         self.graph_drop = False
 
@@ -390,6 +395,9 @@ class TreeCtrlBase(FastLoadTreeCtrl):
                     fullname = self.GetItemName(item)
                     if fullname in self._converted_item:
                         self._converted_item.pop(fullname, None)
+                    if self.config_file:
+                        self.config_file.SetConfig('conversion',
+                                                   converted_item=self._converted_item)
 
                 self.RefreshChildren(parent)
         elif cmd == self.ID_PLOT:
@@ -583,6 +591,8 @@ class TreeCtrlBase(FastLoadTreeCtrl):
         for idx in range(0, len(new_item)):
             name = self.GetItemName(new_item[idx])
             self._converted_item[name] = [(len(new_item), idx), settings]
+        if self.config_file:
+            self.config_file.SetConfig('conversion', converted_item=self._converted_item)
 
         return new_item, settings
 
@@ -590,8 +600,18 @@ class TreeCtrlBase(FastLoadTreeCtrl):
         return self.ConvertItems(item, [item], equation=equation, name=name,
                 force_select_signal=False, **kwargs)
 
+    def AddConvert(self, p, idx, settings):
+        d = self.doConvertFromSetting(settings)
+        if d is None:
+            return False
+        if idx[0] > 1:
+            d = d[idx[1]]
+        self.SetData(p, d)
+        self._converted_item[p] = [idx, settings]
+        return True
+
     def doConvertFromSetting(self, settings):
-        inputs = settings.get('inputs', None)
+        inputs = settings.get('inputs', ['x'])
         equation = settings.get('equation', None)
         if inputs is None or equation is None:
             return None
@@ -770,12 +790,38 @@ class TreeCtrlBase(FastLoadTreeCtrl):
         return self.GetItemDataFromPath(path)
 
     def GetItemDataFromPath(self, path):
+        # path is an array, e.g., path = get_tree_item_path(name)
         d = self.data
-        for p in path:
+        for i, p in enumerate(path):
             if p not in d:
+                if isinstance(d, pd.DataFrame):
+                    # the name in node DataFrame is not parsed, so try the
+                    # combined name, e.g., if the column name is a[5],
+                    # get_tree_item_path will return ['a', '[5]']
+                    name = get_tree_item_name(path[i:])
+                    if name in d:
+                        return d[name]
                 return None
             d = d[p]
         return d
+
+    def SetData(self, path, data):
+        if isinstance(path, str):
+            path = get_tree_item_path(path)
+
+        d = self.data
+        for i, p in enumerate(path[:-1]):
+            if p not in d:
+                if isinstance(d, pd.DataFrame):
+                    # the name in node DataFrame is not parsed, so try the
+                    # combined name, e.g., if the column name is a[5],
+                    # get_tree_item_path will return ['a', '[5]']
+                    name = get_tree_item_name(path[i:])
+                    d[name] = data
+                return False
+            d = d[p]
+        d[path[-1]] = data
+        return True
 
     def GetData(self, path):
         # get data from "path"
@@ -848,9 +894,23 @@ class TreeCtrlBase(FastLoadTreeCtrl):
                 rtn = 1 # item2 is first
         return rtn
 
-    def Load(self, data):
+    def Load(self, data, filename=None):
         """load the dict data"""
         self.data = data
+        if self.filename != filename:
+            if self.config_file:
+                self.confg_file.Flush()
+            self.config_file = None
+            self.filename = filename
+            if filename:
+                _, filename = os.path.split(self.filename)
+                self.config_file = ConfigFile(f'{filename}.swp')
+                converted_item = self.config_file.GetConfig('conversion', 'converted_item')
+                if converted_item is not None and not wx.GetKeyState(wx.WXK_SHIFT):
+                    for p, c in converted_item.items():
+                        idx, settings = c
+                        self.AddConvert(p, idx, settings)
+
         self.Fill(self.pattern)
 
     def Fill(self, pattern=None):
@@ -1010,22 +1070,6 @@ class TreeCtrlWithTimeStamp(TreeCtrlBase):
         else:
             super().OnProcessCommand(cmd, item)
 
-    def GetItemDataFromPath(self, path):
-        # path is an array, e.g., path = get_tree_item_path(name)
-        d = self.data
-        for i, p in enumerate(path):
-            if p not in d:
-                if isinstance(d, pd.DataFrame):
-                    # the name in node DataFrame is not parsed, so try the
-                    # combined name, e.g., if the column name is a[5],
-                    # get_tree_item_path will return ['a', '[5]']
-                    name = get_tree_item_name(path[i:])
-                    if name in d:
-                        return d[name]
-                return None
-            d = d[p]
-        return d
-
     def GetItemTimeStampFromPath(self, path):
         if isinstance(path, str):
             path = get_tree_item_path(path)
@@ -1102,8 +1146,8 @@ class TreeCtrlNoTimeStamp(TreeCtrlBase):
         TreeCtrlBase.__init__(self, *args, **kwargs)
         self.x_path = None
 
-    def Load(self, data):
-        super().Load(data)
+    def Load(self, data, filename=None):
+        super().Load(data, filename)
         if self.x_path is not None:
             # check if x_path is still in the data, clear it if not
             x = self.GetItemDataFromPath(self.x_path)
@@ -1135,7 +1179,7 @@ class TreeCtrlNoTimeStamp(TreeCtrlBase):
                      force_select_signal=False, **kwargs):
         new_item, settings = super().ConvertItems(item, items, equation, config,
                                                   force_select_signal, **kwargs)
-        if len(new_item) == 1 and new_item[0].IsOk():
+        if new_item and len(new_item) == 1 and new_item[0].IsOk():
             if settings is not None and settings.get('xaxis', False):
                 path = self.GetItemPath(new_item[0])
                 self.SetXaxisPath(path)

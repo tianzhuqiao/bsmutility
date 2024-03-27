@@ -38,32 +38,35 @@ class Quaternion:
         N = 1
         if len(m.shape) == 3:
             N = m.shape[-1]
+        else:
+            m = m.reshape(3, 3, 1)
         q = np.zeros((N, 4))
 
         index = np.where(m[2,2] < 0 and m[0, 0] > m[1,1])
         t = 1 + m[0, 0] - m[1,1] - m[2,2]
         x, y, z, w = t, m[0,1]+m[1,0], m[2,0]+m[0,2], m[1,2]-m[2,1]
         g = 0.5 / np.sqrt(t)
-        q[index, :] = np.vstack([w/g, x/g, y/g, z/g])
+        q[index, :] = np.vstack([w/g, x/g, y/g, z/g]).T
 
         index = np.where(m[2,2] < 0 and m[0, 0] <= m[1,1])
         t = 1 - m[0,0] + m[1,1] - m[2,2]
         x, y, z, w = m[0,1]+m[1,0], t, m[1,2]+m[2,1], m[2,0]-m[0,2]
         g = 0.5 / np.sqrt(t)
-        q[index, :] = np.vstack([w/g, x/g, y/g, z/g])
+        q[index, :] = np.vstack([w/g, x/g, y/g, z/g]).T
 
         index = np.where(m[2,2] >= 0 and m[0, 0] < -m[1,1])
         t = 1 - m[0,0] - m[1,1] + m[2,2]
         x, y, z, w = m[2,0]+m[0,2], m[1,2]+m[2,1], t, m[0,1]-m[1,0]
         g = 0.5 / np.sqrt(t)
-        q[index, :] = np.vstack([w/g, x/g, y/g, z/g])
+        q[index, :] = np.vstack([w/g, x/g, y/g, z/g]).T
 
         index = np.where(m[2,2] >= 0 and m[0, 0] >= -m[1,1])
         t = 1 + m[0,0] + m[1,1] + m[2,2]
         x, y, z, w = m[1,2]-m[2,1], m[2,0]-m[0,2], m[0,1]-m[1,0], t
         g = 0.5 / np.sqrt(t)
-        q[index, :] = np.vstack([w/g, x/g, y/g, z/g])
+        q[index, :] = np.vstack([w/g, x/g, y/g, z/g]).T
 
+        q = (q.T/np.linalg.norm(q,axis=1)).T
         return Quaternion(q[:, 0], q[:, 1], q[:, 2], q[:, 3])
 
     @classmethod
