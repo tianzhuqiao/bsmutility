@@ -316,22 +316,27 @@ class TreeCtrlBase(FastLoadTreeCtrl):
         self.expanded = {}
         self.exclude_keys = []
         self.common_convert = [{'label': 'Quaternion to Yaw/Pitch/Roll',
-                                    'inputs': ['w', 'x', 'y', 'z'],
+                                    'inputs': ['#w', '#x', '#y', '#z'],
                                     'outputs': '~yaw, ~pitch, ~roll',
                                     'equation': 'Quaternion(#w, #x, #y, #z).to_angle()',
                                     'force_select_signal': True},
                                 {'label': 'Radian to degree',
-                                    'inputs': ['x'],
+                                    'inputs': ['#1'],
                                     'outputs': '#_deg',
-                                    'equation': 'np.rad2deg(#x)',
+                                    'equation': 'np.rad2deg(#1)',
                                     'force_select_signal': False},
                                 {'label': 'Degree to radian',
-                                    'inputs': ['x'],
+                                    'inputs': ['#1'],
                                     'outputs': '#_rad',
-                                    'equation': 'np.deg2rad(#x)',
+                                    'equation': 'np.deg2rad(#1)',
                                     'force_select_signal': False}]
         self.customized_convert = []
         self._converted_item = {}
+        self._convert_labels = {'label': 'Label',
+                                'inputs': 'Input(s), separated by ","',
+                                'equation': 'Equation',
+                                'outputs': 'Output(s), separated by ","',
+                                'force_select_signal': 'Always show the signal selecting dialog'}
         self.config_file = None
         self.filename = None
 
@@ -512,8 +517,10 @@ class TreeCtrlBase(FastLoadTreeCtrl):
 
     def GetConvertItemProp(self, item, inputs, outputs):
         # the configuration props used to convert an item
-        props = [PropText().Label("Equation").Name('equation').Value('#1'),
-                PropText().Label("Output(s)").Name('outputs').Value(f'~{outputs}')]
+        eqn_label = self._convert_labels.get('equation', 'Equation')
+        out_label = self._convert_labels.get('outputs', 'Output(s)')
+        props = [PropText().Label(eqn_label).Name('equation').Value('#1'),
+                PropText().Label(out_label).Name('outputs').Value(f'~{outputs}')]
         return props
 
     def ConvertItems(self, item, items, equation=None, config=None,
@@ -550,7 +557,7 @@ class TreeCtrlBase(FastLoadTreeCtrl):
                                             config=config,
                                             additional=additional,
                                             start=start)
-            if settings is None:
+            if settings is None or df_in is None:
                 return None, settings
             settings['inputs'] = inputs
             equation = settings.get('equation', None)
@@ -582,9 +589,10 @@ class TreeCtrlBase(FastLoadTreeCtrl):
             tmp = self.FindItemFromPath(path+[n])
             if tmp is not None:
                 new_item.append(tmp)
-
         if len(new_item) > 0 and new_item[0].IsOk():
+            self.UnselectAll()
             self.EnsureVisible(new_item[0])
+            self.SelectItem(new_item[0])
             self.SetFocusedItem(new_item[0])
 
         # save the converted item
@@ -634,15 +642,18 @@ class TreeCtrlBase(FastLoadTreeCtrl):
         # and equation may look like foo(#1, #2, #3, ...), e.g., where #1 will
         # be replaced with data from paths[0], etc.
 
-        data = [self.GetItemDataFromPath(path) for path in paths]
-        if len(paths) == 1:
-            # the data is either '#1'
-            equation = equation.replace('#1', 'data[0]')
-        else:
-            for i in range(len(paths)):
-                equation = equation.replace(f'#{i+1}', f'data[{i}]')
+        data = []
+        for path in paths:
+            d = self.GetItemDataFromPath(path)
+            if d is None:
+                print(f'Invalid inputs {get_tree_item_name(path)}')
+                return None
+            data.append(d)
 
-        # or '#'
+        for i in range(len(paths)):
+            equation = equation.replace(f'#{i+1}', f'data[{i}]')
+
+        # or '#' for first input
         equation = equation.replace('#', 'data[0]')
 
         try:
@@ -670,10 +681,15 @@ class TreeCtrlBase(FastLoadTreeCtrl):
         label = f'{label} {i}'
         in_size =  max(1, len(self.GetSelections()))
         inputs = ', '.join([f'#{i+1}' for i in range(in_size)])
-        props = [PropText().Label('Label').Name('label').Value(label),
-                 PropText().Label('Inputs (separate by ",")').Name('inputs').Value(inputs),
-                 PropText().Label('Equation').Name('equation').Value('#1'),
-                 PropText().Label('Outputs (separate by ",")').Name('outputs').Value('~#')]
+        props = [PropText().Name('label').Value(label),
+                 PropText().Name('inputs').Value(inputs),
+                 PropText().Name('equation').Value('#1'),
+                 PropCheckBox().Name('force_select_signal').Value(in_size>1),
+                 PropText().Name('outputs').Value('~#')]
+        for p in props:
+            name = p.GetName()
+            label = self._convert_labels.get(name, name.capitalize())
+            p.Label(label)
         return props
 
     def AddCustomizedConvert(self):
@@ -684,15 +700,14 @@ class TreeCtrlBase(FastLoadTreeCtrl):
         dlg.propgrid.GetArtProvider().SetTitleWidth(200)
         if dlg.ShowModal() == wx.ID_OK:
             settings = dlg.GetSettings()
-            settings['inputs'] = [x.strip().lstrip('#') for x in settings.get('inputs', '#1').split(',')]
-            settings['force_select_signal'] = len(settings['inputs']) > 1
+            settings['inputs'] = [x.strip() for x in settings.get('inputs', '#1').split(',')]
             self.customized_convert.append(settings)
             self.SetConfig(convert=self.customized_convert)
         return settings
 
     def ManageCustomizedConvert(self):
         converts = self.GetCustomizedConvert()
-        dlg = ConvertSettingDlg(self, converts)
+        dlg = ConvertSettingDlg(self, converts, labels=self._convert_labels)
         if dlg.ShowModal() == wx.ID_OK:
             settings = dlg.GetSettings()
             for s in settings:
@@ -952,6 +967,8 @@ class TreeCtrlBase(FastLoadTreeCtrl):
             path = [path]
 
         item = self.GetRootItem()
+        if not item.IsOk():
+            return None
         for p in path:
             child, cookie = self.GetFirstChild(item)
             while child.IsOk():
@@ -985,14 +1002,19 @@ class TreeCtrlBase(FastLoadTreeCtrl):
             for item in items:
                 signal = settings.get(item, '')
                 if not signal:
+                    print(f'Input "{item}" is missing!')
                     return None, settings
                 if start:
                     signal = f'{start}.{signal}'
                 d = self.GetData(signal)
                 if d is None:
+                    print(f'Invalid input "{item}({signal})"!')
                     return None, settings
                 if len(df) > 0 and len(d) != len(df):
-                    print(f'"{signal}" has different length with others!')
+                    print(f'Input "{item}({signal})" has different length with others!')
+                    return None, settings
+                if hasattr(d, 'shape') and len(d.shape) > 1:
+                    print(f'Input "{item}({signal})" is not 1-d!')
                     return None, settings
                 df[item] = d
                 # the full path with "start"
@@ -1137,6 +1159,7 @@ class TreeCtrlWithTimeStamp(TreeCtrlBase):
 
 class TreeCtrlNoTimeStamp(TreeCtrlBase):
     # the data doesn't have timestamp, so let the user selects the x-axis data
+    XAXIS = 'xaxis'
     ID_SET_X = wx.NewIdRef()
     ID_EXPORT = wx.NewIdRef()
     ID_EXPORT_WITH_X = wx.NewIdRef()
@@ -1145,6 +1168,7 @@ class TreeCtrlNoTimeStamp(TreeCtrlBase):
     def __init__(self, *args, **kwargs):
         TreeCtrlBase.__init__(self, *args, **kwargs)
         self.x_path = None
+        self._convert_labels[self.XAXIS] = 'Set as x-axis'
 
     def Load(self, data, filename=None):
         super().Load(data, filename)
@@ -1153,6 +1177,12 @@ class TreeCtrlNoTimeStamp(TreeCtrlBase):
             x = self.GetItemDataFromPath(self.x_path)
             if x is None:
                 self.x_path = None
+
+    def AddConvert(self, p, idx, settings):
+        rtn = super().AddConvert(p, idx, settings)
+        if rtn and settings.get(self.XAXIS, False):
+            self.SetXaxisPath(get_tree_item_path(p))
+        return rtn
 
     def RefreshChildren(self, item):
         super().RefreshChildren(item)
@@ -1166,13 +1196,15 @@ class TreeCtrlNoTimeStamp(TreeCtrlBase):
         props = super().GetConvertItemProp(item, inputs, outputs)
         if len(outputs) == 1:
             # for single output
-            props.append(PropCheckBox().Label("Set as axis").Name('xaxis').Value(False))
+            xaxis_label = self._convert_labels.get(self.XAXIS, 'Set as x-axis')
+            props.append(PropCheckBox().Label(xaxis_label).Name(self.XAXIS).Value(False))
         return props
 
     def GetCustomizedConvertProp(self):
         # the configuration props used to convert an item
         props = super().GetCustomizedConvertProp()
-        props.append(PropCheckBox().Label("Set as axis").Name('xaxis').Value(False))
+        xaxis_label = self._convert_labels.get(self.XAXIS, 'Set as x-axis')
+        props.append(PropCheckBox().Label(xaxis_label).Name(self.XAXIS).Value(False))
         return props
 
     def ConvertItems(self, item, items, equation=None, config=None,
@@ -1180,7 +1212,7 @@ class TreeCtrlNoTimeStamp(TreeCtrlBase):
         new_item, settings = super().ConvertItems(item, items, equation, config,
                                                   force_select_signal, **kwargs)
         if new_item and len(new_item) == 1 and new_item[0].IsOk():
-            if settings is not None and settings.get('xaxis', False):
+            if settings is not None and settings.get(self.XAXIS, False):
                 path = self.GetItemPath(new_item[0])
                 self.SetXaxisPath(path)
         return new_item, settings
@@ -1403,6 +1435,7 @@ class PanelNotebookBase(PanelBase):
 
         self.notebook = aui.AuiNotebook(self, agwStyle=aui.AUI_NB_TOP | aui.AUI_NB_TAB_SPLIT | aui.AUI_NB_SCROLL_BUTTONS | wx.NO_BORDER)
 
+        self.tree = None
         self.init_pages()
 
         self.box = wx.BoxSizer(wx.VERTICAL)
@@ -1447,16 +1480,27 @@ class PanelNotebookBase(PanelBase):
     def OnProcessCommand(self, event):
         eid = event.GetId()
         if eid == self.ID_MORE:
-            menu = wx.Menu()
-            menu.Append(self.ID_CONVERT_CUSTOM, "Add custom convert")
-            menu.Append(self.ID_CONVERT_MANAGE, "Manage custom convert")
+            if isinstance(self.tree, TreeCtrlBase):
+                menu = wx.Menu()
+                menu.Append(self.ID_CONVERT_CUSTOM, "Add custom convert")
+                menu.Append(self.ID_CONVERT_MANAGE, "Manage custom convert")
             self.PopupMenu(menu)
         elif eid == self.ID_CONVERT_CUSTOM:
-            self.tree.AddCustomizedConvert()
+            if isinstance(self.tree, TreeCtrlBase):
+                self.tree.AddCustomizedConvert()
         elif eid == self.ID_CONVERT_MANAGE:
-            self.tree.ManageCustomizedConvert()
+            if isinstance(self.tree, TreeCtrlBase):
+                self.tree.ManageCustomizedConvert()
         else:
             super().OnProcessCommand(event)
+
+    def OnUpdateCmdUI(self, event):
+        eid = event.GetId()
+        if eid == self.ID_CONVERT_MANAGE:
+            if isinstance(self.tree, TreeCtrlBase):
+                event.Enable(len(self.tree.GetCustomizedConvert()))
+        else:
+            super().OnUpdateCmdUI(event)
 
 class FileViewBase(Interface):
     name = None

@@ -1,8 +1,8 @@
 import wx
 import wx.py.dispatcher as dp
 import propgrid
-from propgrid import PropControl, PropGrid, TextValidator, PropSeparator, \
-                     PropCheckBox, PropText
+from propgrid import PropControl, PropGrid, TextValidator, PropCheckBox, \
+                     PropText
 from .autocomplete import AutocompleteTextCtrl
 from .utility import get_tree_item_path
 
@@ -62,6 +62,7 @@ class SettingDlgBase(wx.Dialog):
 
         self.propgrid = PropGrid(self)
         g = self.propgrid
+        g.GetArtProvider().SetTitleWidth(200)
         g.Draggable(False)
         g.SetFocus()
 
@@ -86,6 +87,15 @@ class SettingDlgBase(wx.Dialog):
         self.SetSizer(sizer)
 
         self.Bind(wx.EVT_CONTEXT_MENU, self.OnContextMenu)
+        self.Bind(propgrid.EVT_PROP_KEYDOWN, self.OnPropKeyDown)
+
+    def OnPropKeyDown(self, event):
+        data = event.GetData()
+        keycode = data.get('keycode', '')
+        if keycode in [wx.WXK_UP, wx.WXK_DOWN] and not wx.GetKeyState(wx.WXK_COMMAND):
+            # only allow up/down
+            return
+        event.Veto()
 
     def OnContextMenu(self, event):
         # it is necessary, otherwise when right click on the dialog, the context
@@ -140,9 +150,8 @@ class SignalSelSettingDlg(SettingDlgBase):
         cfg = self.LoadConfig() or {}
         if values:
             cfg.update(values)
-        g.Insert(PropSeparator().Label('Input(s)'))
         for item in items:
-            g.Insert(PropAutoCompleteEditBox(self.completer).Label(item)
+            g.Insert(PropAutoCompleteEditBox(self.completer).Label(f'Input ({item})')
                      .Name(item).Value(cfg.get(item, '')))
         for p in additional:
             value = cfg.get(p.GetName(), None)
@@ -176,20 +185,21 @@ class PropSettingDlg(SettingDlgBase):
 class ConvertSettingDlg(SettingDlgBase):
     ID_DELETE = wx.NewIdRef()
 
-    def __init__(self, parent, converts, title='Settings ...',
+    def __init__(self, parent, converts, labels=None, title='Settings ...',
                  size=wx.DefaultSize, pos=wx.DefaultPosition,
                  style=wx.DEFAULT_DIALOG_STYLE|wx.RESIZE_BORDER):
         SettingDlgBase.__init__(self, parent, None, title, size, pos, style)
 
         g = self.propgrid
-        g.GetArtProvider().SetTitleWidth(200)
         g.Draggable(True)
+        if labels is None:
+            labels = {}
         for c in converts:
             indent = 0
             for k, v in c.items():
                 if isinstance(v, (tuple, list)):
                     v = ','.join(v)
-                label = k
+                label = labels.get(k, k)
                 label = label.replace('_', ' ').capitalize()
                 if isinstance(v, bool):
                     g.Insert(PropCheckBox().Label(label).Name(k).Value(v).Indent(indent)
