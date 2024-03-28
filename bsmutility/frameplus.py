@@ -108,6 +108,7 @@ class FramePlus(wx.Frame):
                           style=style)
         self._mgr = AuiManagerPlus()
         self._mgr.SetManagedWindow(self)
+        self._mgr.GetArtProvider().SetMetric(aui.AUI_DOCKART_PANE_BUTTON_SIZE, 25)
         self.menuAddon = {}
         self.paneAddon = {}
         self.paneMenu = {}
