@@ -912,19 +912,18 @@ class TreeCtrlBase(FastLoadTreeCtrl):
     def Load(self, data, filename=None):
         """load the dict data"""
         self.data = data
-        if self.filename != filename:
-            if self.config_file:
-                self.confg_file.Flush()
-            self.config_file = None
-            self.filename = filename
-            if filename:
-                _, filename = os.path.split(self.filename)
-                self.config_file = ConfigFile(f'{filename}.swp')
-                converted_item = self.config_file.GetConfig('conversion', 'converted_item')
-                if converted_item is not None and not wx.GetKeyState(wx.WXK_SHIFT):
-                    for p, c in converted_item.items():
-                        idx, settings = c
-                        self.AddConvert(p, idx, settings)
+        if self.config_file:
+            self.config_file.Flush()
+        self.config_file = None
+        self.filename = filename
+        if filename:
+            _, filename = os.path.split(self.filename)
+            self.config_file = ConfigFile(f'{filename}.swp')
+            converted_item = self.config_file.GetConfig('conversion', 'converted_item')
+            if converted_item is not None and not wx.GetKeyState(wx.WXK_SHIFT):
+                for p, c in converted_item.items():
+                    idx, settings = c
+                    self.AddConvert(p, idx, settings)
 
         self.Fill(self.pattern)
 
