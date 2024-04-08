@@ -785,6 +785,8 @@ class TreeCtrlBase(FastLoadTreeCtrl):
             if step:
                 # hide the y-axis tick label
                 ax.get_yaxis().set_ticklabels([])
+        # notify the graph to update (e.g., timeline)
+        dp.send('graph.axes_updated', figure=fig, axes=[ax])
         return line[0]
 
     def GetItemPath(self, item):
