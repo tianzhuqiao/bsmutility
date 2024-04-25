@@ -1281,7 +1281,7 @@ class TreeCtrlNoTimeStamp(TreeCtrlBase):
         data = [[name, y]]
         selections = self.GetSelections()
         for sel in selections:
-            if self.ItemHasChildren(sel) and sel != item:
+            if self.ItemHasChildren(sel) or sel == item:
                 continue
             y = self.GetItemData(sel)
             name = self.GetItemText(sel)
@@ -1296,6 +1296,8 @@ class TreeCtrlNoTimeStamp(TreeCtrlBase):
                     val = val.flatten()
                 df[name] = val
             data = df
+        elif len(data) == 1:
+            data = data[0][1]
 
         if len(selections) <= 1:
             output_name = get_variable_name(path)
