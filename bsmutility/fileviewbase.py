@@ -304,6 +304,8 @@ class TreeCtrlBase(FastLoadTreeCtrl):
     ID_CONVERT_CUSTOM = wx.NewIdRef()
     ID_CONVERT_MANAGE = wx.NewIdRef()
     ID_DELETE = wx.NewIdRef()
+    ID_COPY_PATH = wx.NewIdRef()
+    ID_COPY_NAME = wx.NewIdRef()
     IDS_CONVERT = {}
 
     def __init__(self, parent, style=wx.TR_DEFAULT_STYLE):
@@ -407,6 +409,15 @@ class TreeCtrlBase(FastLoadTreeCtrl):
                 self.RefreshChildren(parent)
         elif cmd == self.ID_PLOT:
             self.PlotItem(item)
+        elif cmd in [self.ID_COPY_NAME, self.ID_COPY_PATH]:
+            if wx.TheClipboard.Open():
+                if cmd == self.ID_COPY_NAME:
+                    p = self.GetItemText(item)
+                else:
+                    p = self.GetItemName(item)
+                wx.TheClipboard.SetData(wx.TextDataObject(p))
+                wx.TheClipboard.Close()
+
         elif cmd == self.ID_CONVERT:
             self.ConvertItems(item, self.GetSelections())
         elif cmd == self.ID_CONVERT_CUSTOM:
@@ -484,6 +495,9 @@ class TreeCtrlBase(FastLoadTreeCtrl):
         menu.Append(self.ID_PLOT, "Plot")
         menu.AppendSeparator()
         menu.Append(self.ID_DELETE, "Delete")
+        menu.AppendSeparator()
+        menu.Append(self.ID_COPY_NAME, "Copy name")
+        menu.Append(self.ID_COPY_PATH, "Copy path")
         menu.AppendSeparator()
         menu.Append(self.ID_CONVERT, "Convert to ...")
         for c in self.common_convert:
