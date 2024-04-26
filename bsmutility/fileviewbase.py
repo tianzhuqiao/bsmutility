@@ -28,6 +28,7 @@ class FindListCtrl(wx.ListCtrl):
     ID_FIND_NEXT = wx.NewIdRef()
     ID_FIND_PREV = wx.NewIdRef()
     ID_COPY_NO_INDEX = wx.NewIdRef()
+    ID_COPY_SEL_COLS = wx.NewIdRef()
     def __init__(self, *args, **kwargs):
         wx.ListCtrl.__init__(self, *args, **kwargs)
         self.SetupFind()
@@ -36,6 +37,7 @@ class FindListCtrl(wx.ListCtrl):
         self.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self.OnRightClick)
         self.Bind(wx.EVT_TOOL, self.OnBtnCopy, id=wx.ID_COPY)
         self.Bind(wx.EVT_TOOL, self.OnBtnCopy, id=self.ID_COPY_NO_INDEX)
+        self.Bind(wx.EVT_TOOL, self.OnBtnCopy, id=self.ID_COPY_SEL_COLS)
 
         accel = [
             (wx.ACCEL_CTRL, ord('F'), self.ID_FIND_REPLACE),
@@ -48,6 +50,8 @@ class FindListCtrl(wx.ListCtrl):
         self.accel = wx.AcceleratorTable(accel)
         self.SetAcceleratorTable(self.accel)
 
+        self._copy_columns = None
+
     def OnRightClick(self, event):
 
         if self.GetSelectedItemCount() <= 0:
@@ -57,6 +61,9 @@ class FindListCtrl(wx.ListCtrl):
         menu.Append(wx.ID_COPY, "&Copy \tCtrl+C")
         if 0 <= self.index_column < self.GetColumnCount():
             menu.Append(self.ID_COPY_NO_INDEX, "C&opy without index \tCtrl+Shift+C")
+        if self.GetColumnCount() > 1:
+            menu.Append(self.ID_COPY_SEL_COLS, "Copy &selected columns")
+
         self.PopupMenu(menu)
 
     def OnBtnCopy(self, event):
@@ -64,6 +71,17 @@ class FindListCtrl(wx.ListCtrl):
         columns = list(range(self.GetColumnCount()))
         if cmd == self.ID_COPY_NO_INDEX:
             columns.remove(self.index_column)
+        elif cmd == self.ID_COPY_SEL_COLS:
+            lst = [self.GetColumn(c).GetText() for c in range(self.GetColumnCount())]
+            dlg = wx.MultiChoiceDialog(self, "Select column(s):","Copy ...", lst)
+            if self._copy_columns is None:
+                # default all columns
+                self._copy_columns = range(len(lst))
+            dlg.SetSelections(self._copy_columns)
+            if dlg.ShowModal() == wx.ID_OK:
+                columns = dlg.GetSelections()
+                self._copy_columns = columns
+
         if wx.TheClipboard.Open():
             item = self.GetFirstSelected()
             text = []
