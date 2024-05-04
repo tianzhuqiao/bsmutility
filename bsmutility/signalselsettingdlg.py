@@ -2,7 +2,7 @@ import wx
 import wx.py.dispatcher as dp
 import propgrid
 from propgrid import PropControl, PropGrid, TextValidator, PropCheckBox, \
-                     PropText
+                     PropText, PropSeparator
 from .autocomplete import AutocompleteTextCtrl
 from .utility import get_tree_item_path
 
@@ -55,6 +55,7 @@ class SettingDlgBase(wx.Dialog):
         self.SetExtraStyle(wx.DIALOG_EX_CONTEXTHELP)
         self.Create(parent, title=title, pos=pos, size=size, style=style)
 
+        self.SetEscapeId(wx.ID_CANCEL)
         self.config = config
         if self.config and '.' in self.config:
             self.config = self.config.split('.')
@@ -71,31 +72,35 @@ class SettingDlgBase(wx.Dialog):
         sizer.Add(g, 1, wx.EXPAND|wx.ALL, 1)
 
         # ok/cancel button
-        btnsizer = wx.StdDialogButtonSizer()
+        btnsizer = wx.BoxSizer(wx.HORIZONTAL)
         btnsizer.AddStretchSpacer(1)
-
-        btn = wx.Button(self, wx.ID_OK)
-        btn.SetDefault()
-        btnsizer.AddButton(btn)
-
-        btn = wx.Button(self, wx.ID_CANCEL)
-        btnsizer.AddButton(btn)
-        btnsizer.Realize()
-
+        for btn in self.CreateButtons():
+            btnsizer.Add(btn, 0, wx.ALL, 5)
         sizer.Add(btnsizer, 0, wx.ALL|wx.EXPAND, 15)
 
         self.SetSizer(sizer)
 
         self.Bind(wx.EVT_CONTEXT_MENU, self.OnContextMenu)
         self.Bind(propgrid.EVT_PROP_KEYDOWN, self.OnPropKeyDown)
+        g.Bind(propgrid.EVT_PROP_RIGHT_CLICK, self.OnRightClick)
+
+    def CreateButtons(self):
+        btn_ok = wx.Button(self, wx.ID_OK)
+        btn_ok.SetDefault()
+        btn_cancel = wx.Button(self, wx.ID_CANCEL)
+        return [btn_ok, btn_cancel]
 
     def OnPropKeyDown(self, event):
         data = event.GetData()
         keycode = data.get('keycode', '')
-        if keycode in [wx.WXK_UP, wx.WXK_DOWN] and not wx.GetKeyState(wx.WXK_COMMAND):
-            # only allow up/down
+        if keycode in [wx.WXK_UP, wx.WXK_DOWN, wx.WXK_SPACE, wx.WXK_ESCAPE, wx.WXK_TAB] and \
+           not wx.GetKeyState(wx.WXK_COMMAND):
+            # only allow up/down/space/escape
             return
         event.Veto()
+
+    def OnRightClick(self, event):
+        pass
 
     def OnContextMenu(self, event):
         # it is necessary, otherwise when right click on the dialog, the context
@@ -137,7 +142,7 @@ class SettingDlgBase(wx.Dialog):
 
 
 class SignalSelSettingDlg(SettingDlgBase):
-    def __init__(self, parent, data=None, items=None, values=None,
+    def __init__(self, parent, data=None, items=None, values=None, args=None,
                  config=None, additional=None, title='Settings ...',
                  size=wx.DefaultSize, pos=wx.DefaultPosition,
                  style=wx.DEFAULT_DIALOG_STYLE|wx.RESIZE_BORDER):
@@ -153,7 +158,12 @@ class SignalSelSettingDlg(SettingDlgBase):
         for item in items:
             g.Insert(PropAutoCompleteEditBox(self.completer).Label(f'Input ({item})')
                      .Name(item).Value(cfg.get(item, '')))
-        for p in additional:
+        if args is not None:
+            for name, signal, default in args:
+                g.Insert(PropText().Label(f'{name.capitalize()}({signal})')
+                     .Name(signal).Value(default))
+
+        for p in self.additional:
             value = cfg.get(p.GetName(), None)
             if value is not None:
                 p.Value(value)
@@ -182,36 +192,150 @@ class PropSettingDlg(SettingDlgBase):
                 p.Value(value)
             g.Insert(p)
 
-class ConvertSettingDlg(SettingDlgBase):
+class ConvertManagingDlg(SettingDlgBase):
     ID_DELETE = wx.NewIdRef()
+    ID_ADD_ARGUMENT = wx.NewIdRef()
 
     def __init__(self, parent, converts, labels=None, title='Settings ...',
                  size=wx.DefaultSize, pos=wx.DefaultPosition,
                  style=wx.DEFAULT_DIALOG_STYLE|wx.RESIZE_BORDER):
         SettingDlgBase.__init__(self, parent, None, title, size, pos, style)
 
+        self.labels = labels or {}
         g = self.propgrid
         g.Draggable(True)
-        if labels is None:
-            labels = {}
         for c in converts:
-            indent = 0
-            for k, v in c.items():
-                if isinstance(v, (tuple, list)):
-                    v = ','.join(v)
-                label = labels.get(k, k)
-                label = label.replace('_', ' ').capitalize()
-                if isinstance(v, bool):
-                    g.Insert(PropCheckBox().Label(label).Name(k).Value(v).Indent(indent)
-                             .Draggable(indent==0))
-                else:
-                    g.Insert(PropText().Label(label).Name(k).Value(v).Indent(indent)
-                             .Draggable(indent==0))
-                indent = 1
+            self.add_convert(c)
 
-        g.Bind(propgrid.EVT_PROP_RIGHT_CLICK, self.OnRightClick)
+        # expand the 1st convert
+        if g.GetCount() > 0:
+            g.Get(0).Expand(True)
+
         self.Bind(propgrid.EVT_PROP_DROP, self.OnDrop)
         self.Bind(propgrid.EVT_PROP_BEGIN_DRAG, self.OnDrag)
+        self.Bind(wx.EVT_BUTTON, self.OnAddArgument, id=self.ID_ADD_ARGUMENT)
+        self.Bind(wx.EVT_UPDATE_UI, self.OnUpdateCmdUI)
+
+    def OnUpdateCmdUI(self, event):
+        eid = event.GetId()
+        if eid == self.ID_ADD_ARGUMENT:
+            event.Enable(self.propgrid.GetSelected() is not None)
+
+    def _T(self, name):
+        label = self.labels.get(name, name)
+        label = label.replace('_', ' ').capitalize()
+        return label
+
+    def add_argument(self, arg, index=-1, indent=1):
+
+        p = self.propgrid.Insert(PropText().Label(self._T('name'))
+                                           .Value(arg[0]).Indent(indent),
+                                           index=index)
+        if index != -1:
+            index += 1
+        self.propgrid.Insert(PropText().Label(self._T('argument'))
+                                       .Value(arg[1]).Indent(indent+1),
+                                        index=index)
+
+        if index != -1:
+            index += 1
+        if isinstance(arg[2], bool):
+            self.propgrid.Insert(PropCheckBox().Label(self._T('default'))
+                                               .Value(arg[2]).Indent(indent+1),
+                                               index=index)
+        else:
+            self.propgrid.Insert(PropText().Label(self._T('default'))
+                                           .Value(arg[2]).Indent(indent+1),
+                                           index=index)
+
+        self.propgrid.SetSelection(p)
+        self.propgrid.EnsureVisible(p)
+
+    def add_convert(self, setting):
+
+        label = setting['label']
+        inputs = setting['inputs']
+        args = setting.get('args', None) or []
+        equation = setting.get('equation', '#1')
+        outputs = setting.get('outputs', '~#')
+        g = self.propgrid
+
+        p = g.Insert(PropText().Name('label').Label(self._T('label'))
+                               .Value(label).Indent(0).Expand(False))
+        if inputs is None:
+            inputs = ["#1"]
+        g.Insert(PropText().Name('inputs').Label(self._T('inputs'))
+                           .Value(','.join(inputs)).Indent(1))
+
+        g.Insert(PropSeparator().Name('args').Label(self._T('args'))
+                                .Indent(1).Expand(False).Visible(len(args) > 0))
+        for arg in args:
+            self.add_argument(arg, indent=2)
+
+        g.Insert(PropText().Name('equation').Label(self._T('equation'))
+                           .Value(equation).Indent(1))
+        g.Insert(PropText().Name('outputs').Label(self._T('outputs'))
+                           .Value(outputs).Indent(1))
+        # other settings
+        for k, v in setting.items():
+            if k in ['label', 'inputs', 'args', 'equation', 'outputs']:
+                continue
+            label = self._T(k)
+            if isinstance(v, bool):
+                g.Insert(PropCheckBox().Label(label).Name(k).Value(v).Indent(1)
+                         .Draggable(False))
+            else:
+                g.Insert(PropText().Label(label).Name(k).Value(v).Indent(1)
+                         .Draggable(False))
+        return p
+
+
+    def get_next_index(self, prop):
+        idx = self.propgrid.Index(prop)
+        indent = self.propgrid.Get(idx).GetIndent()
+        idx += 1
+        while idx < self.propgrid.GetCount():
+            p = self.propgrid.Get(idx)
+            if p.GetIndent() == indent:
+                break
+            idx += 1
+        return idx
+
+    def GetCurrentConvert(self):
+        prop = self.propgrid.GetSelected()
+        # find the current convert
+        while prop and prop.GetIndent() != 0:
+            prop = prop.GetParent()
+
+        return prop
+
+    def GetCurrentArgs(self):
+        prop = self.GetCurrentConvert()
+        if prop is None:
+            return None
+        idx = self.propgrid.Index(prop)
+        # find the args in current convert
+        while prop:
+            prop = self.propgrid.Get(idx)
+            if prop.GetName() == 'args':
+                return prop
+            idx += 1
+        return None
+
+    def OnAddArgument(self, event):
+        # find the args in current convert
+        prop = self.GetCurrentArgs()
+        if prop is None:
+            return
+
+        # show the arguments section
+        prop.Visible(True).Expand(True).Show()
+        idx = self.get_next_index(prop)
+        self.add_argument(["", "", "0"], index=idx, indent=prop.GetIndent()+1)
+
+    def CreateButtons(self):
+        btns = [wx.Button(self, self.ID_ADD_ARGUMENT, label="Add argument")]
+        return btns + super().CreateButtons()
 
     def OnDrag(self, event):
         prop = event.GetProp()
@@ -226,7 +350,7 @@ class ConvertSettingDlg(SettingDlgBase):
 
     def OnRightClick(self, event):
         prop = event.GetProp()
-        if prop.GetIndent() == 0:
+        if prop.GetIndent() in [0, 2]:
             menu = wx.Menu()
             menu.Append(self.ID_DELETE, 'Delete')
             cmd = self.GetPopupMenuSelectionFromUser(menu)
@@ -238,30 +362,62 @@ class ConvertSettingDlg(SettingDlgBase):
                 self.propgrid.Delete(idx)
                 while idx < self.propgrid.GetCount():
                     p = self.propgrid.Get(idx)
-                    if p.GetIndent() == 0:
+                    if p.GetIndent() <= prop.GetIndent():
                         break
                     self.propgrid.Delete(idx)
+            if prop.GetIndent() == 2:
+                p = self.GetCurrentArgs()
+                if p and not p.HasChildren():
+                    p.Visible(False)
+            self.propgrid.UpdateGrid()
 
-    def GetSettings(self):
-        settings = []
+    def GetConvert(self, index = 0):
+        p = self.propgrid.Get(index)
+        if p.GetIndent() != 0:
+            return None
         convert = {}
-        for i in range(self.propgrid.GetCount()):
-            p = self.propgrid.Get(i)
-            # apply the change from editing
-            p.Activated(False)
-            if p.IsSeparator():
-                continue
-            # start of a group
+        convert[p.GetName()] = p.GetValue()
+        index += 1
+        while index < self.propgrid.GetCount():
+            p = self.propgrid.Get(index)
             if p.GetIndent() == 0:
-                if convert:
-                    settings.append(convert)
-                convert = {}
+                break
+            if p.GetName() == 'args':
+                index += 1
+                args = []
+                while index < self.propgrid.GetCount():
+                    p = self.propgrid.Get(index)
+                    if p is None or p.GetIndent() <= 1:
+                        break
+                    name = p.GetValue()
+                    p = self.propgrid.Get(index+1)
+                    signal = p.GetValue()
+                    p = self.propgrid.Get(index+2)
+                    default = p.GetValue()
+                    args.append([name, signal, default])
+                    index += 3
+                convert['args'] = args
+                continue
             name = p.GetName()
             value = p.GetValue()
             if isinstance(p, PropCheckBox):
                 value = bool(value)
+            if name == 'inputs':
+                value = [v.strip() for v in value.split(',')]
             convert[name] = value
-        # add the last group
-        if convert:
-            settings.append(convert)
+            index += 1
+        return convert, index
+
+    def GetSettings(self):
+        for i in range(self.propgrid.GetCount()):
+            p = self.propgrid.Get(i)
+            # apply the change from editing
+            p.Activated(False)
+
+        settings = []
+        index = 0
+        while index < self.propgrid.GetCount():
+            convert, index = self.GetConvert(index)
+            if convert:
+                settings.append(convert)
         return settings
