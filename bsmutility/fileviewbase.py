@@ -1523,14 +1523,20 @@ class PanelNotebookBase(PanelBase):
         panel.SetSizer(szAll)
         return panel, search, ctrl
 
+    def GetMoreMenu(self):
+        menu = None
+        if isinstance(self.tree, TreeCtrlBase):
+            menu = wx.Menu()
+            menu.Append(self.ID_CONVERT_CUSTOM, "Add custom convert")
+            menu.Append(self.ID_CONVERT_MANAGE, "Manage custom convert")
+        return menu
+
     def OnProcessCommand(self, event):
         eid = event.GetId()
         if eid == self.ID_MORE:
-            if isinstance(self.tree, TreeCtrlBase):
-                menu = wx.Menu()
-                menu.Append(self.ID_CONVERT_CUSTOM, "Add custom convert")
-                menu.Append(self.ID_CONVERT_MANAGE, "Manage custom convert")
-            self.PopupMenu(menu)
+            menu = self.GetMoreMenu()
+            if menu is not None:
+                self.PopupMenu(menu)
         elif eid == self.ID_CONVERT_CUSTOM:
             if isinstance(self.tree, TreeCtrlBase):
                 self.tree.AddCustomizedConvert()
