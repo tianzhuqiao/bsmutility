@@ -304,14 +304,13 @@ class ListCtrlBase(FindListCtrl, ListCtrlAutoWidthMixin):
             self.pattern = self.pattern.lower()
             self.pattern.strip()
 
+        self.Refresh()
         if self.data is None:
             self.SetItemCount(0)
-            self.Refresh()
             return
 
         self.ApplyPattern()
         self.SetItemCount(len(self.data_shown))
-        self.Refresh()
 
 class TreeCtrlBase(FastLoadTreeCtrl):
     """the tree control to show the hierarchy of the objects (dict)"""
@@ -974,6 +973,7 @@ class TreeCtrlBase(FastLoadTreeCtrl):
         # clear the tree control
         self.expanded = {}
         self.DeleteAllItems()
+        self.Refresh()
         if not self.data:
             return
 
