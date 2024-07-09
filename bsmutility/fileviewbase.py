@@ -436,11 +436,14 @@ class TreeCtrlBase(FastLoadTreeCtrl):
             self.PlotItem(item)
         elif cmd in [self.ID_COPY_NAME, self.ID_COPY_PATH]:
             if wx.TheClipboard.Open():
-                if cmd == self.ID_COPY_NAME:
-                    p = self.GetItemText(item)
-                else:
-                    p = self.GetItemName(item)
-                wx.TheClipboard.SetData(wx.TextDataObject(p))
+                text = []
+                for item in self.GetSelections():
+                    if cmd == self.ID_COPY_NAME:
+                        p = self.GetItemText(item)
+                    else:
+                        p = self.GetItemName(item)
+                    text.append(p)
+                wx.TheClipboard.SetData(wx.TextDataObject('\n'.join(text)))
                 wx.TheClipboard.Close()
 
         elif cmd == self.ID_CONVERT:
