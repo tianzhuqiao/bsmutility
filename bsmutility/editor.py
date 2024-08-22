@@ -989,7 +989,7 @@ class Editor(FileViewBase):
 
     @classmethod
     def get_menu(cls):
-        menu = [['open', 'File:Open:Python script\tCtrl+O'],
+        menu = [['open', 'File:Open:Python script'],
                 ['new', 'File:New:Python script\tCtrl+N']]
         return menu
 

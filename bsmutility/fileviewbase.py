@@ -3,6 +3,8 @@ import os
 import traceback
 import json
 from collections.abc import MutableMapping
+import pathlib
+import platform
 import wx
 import wx.py.dispatcher as dp
 from wx.lib.mixins.listctrl import ListCtrlAutoWidthMixin
@@ -1427,7 +1429,7 @@ class PanelBase(wx.Panel):
 
     @classmethod
     def GetFileType(cls):
-        return "|All files (*.*)|*.*"
+        return "All files (*.*)|*.*"
 
     @classmethod
     def get_all_managers(cls):
@@ -1564,6 +1566,8 @@ class FileViewBase(Interface):
 
     ID_PANE_COPY_PATH = wx.NewIdRef()
     ID_PANE_COPY_PATH_REL = wx.NewIdRef()
+    ID_PANE_COPY_PATH_POSIX = wx.NewIdRef()
+    ID_PANE_COPY_PATH_REL_POSIX = wx.NewIdRef()
     ID_PANE_SHOW_IN_FINDER = wx.NewIdRef()
     ID_PANE_SHOW_IN_BROWSING = wx.NewIdRef()
     ID_PANE_CLOSE = wx.NewIdRef()
@@ -1651,6 +1655,13 @@ class FileViewBase(Interface):
             if filename:
                 manager.Load(filename, add_to_history=add_to_history)
             title = manager.GetCaption()
+            copy_path_posix = []
+            if platform.system() == 'Windows':
+                copy_path_posix = [
+                        {'id':cls.ID_PANE_COPY_PATH_POSIX, 'label':'Copy Path with forward slashes (/)'},
+                        {'id':cls.ID_PANE_COPY_PATH_REL_POSIX, 'label':'Copy Relative Path with forward slashes (/)'}
+                        ]
+
             dp.send(signal="frame.add_panel",
                     panel=manager,
                     title=title,
@@ -1663,6 +1674,7 @@ class FileViewBase(Interface):
                                {'type': wx.ITEM_SEPARATOR},
                                {'id':cls.ID_PANE_COPY_PATH, 'label':'Copy Path'},
                                {'id':cls.ID_PANE_COPY_PATH_REL, 'label':'Copy Relative Path'},
+                               *copy_path_posix,
                                {'type': wx.ITEM_SEPARATOR},
                                {'id': cls.ID_PANE_SHOW_IN_FINDER, 'label':f'Reveal in  {get_file_finder_name()}'},
                                {'id': cls.ID_PANE_SHOW_IN_BROWSING, 'label':'Reveal in Browsing panel'},
@@ -1680,11 +1692,15 @@ class FileViewBase(Interface):
     def PaneMenu(cls, pane, command):
         if not pane or not isinstance(pane, cls.panel_type):
             return
-        if command in [cls.ID_PANE_COPY_PATH, cls.ID_PANE_COPY_PATH_REL]:
+        if command in [cls.ID_PANE_COPY_PATH, cls.ID_PANE_COPY_PATH_REL,
+                       cls.ID_PANE_COPY_PATH_POSIX, cls.ID_PANE_COPY_PATH_REL_POSIX]:
             if wx.TheClipboard.Open():
                 filepath = pane.filename
-                if command == cls.ID_PANE_COPY_PATH_REL:
+                if command in [cls.ID_PANE_COPY_PATH_REL, cls.ID_PANE_COPY_PATH_REL_POSIX]:
                     filepath = os.path.relpath(filepath, os.getcwd())
+                if command in [cls.ID_PANE_COPY_PATH_POSIX, cls.ID_PANE_COPY_PATH_REL_POSIX]:
+                    filepath = pathlib.PureWindowsPath(filepath).as_posix()
+
                 wx.TheClipboard.SetData(wx.TextDataObject(filepath))
                 wx.TheClipboard.Close()
         elif command == cls.ID_PANE_SHOW_IN_FINDER:
