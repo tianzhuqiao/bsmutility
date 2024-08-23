@@ -545,7 +545,7 @@ class Shell(pyshell.Shell):
                 linenum = 1
             dp.send('frame.file_drop',
                     filename=path,
-                    activated=True,
+                    activate=True,
                     lineno=linenum)
         event.Skip()
 

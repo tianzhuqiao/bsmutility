@@ -1646,6 +1646,9 @@ class FileViewBase(Interface):
 
         If the file has already been opened, return its handler; otherwise, create it.
         """
+        if not os.path.isfile(filename):
+            return None
+
         if not cls.check_filename(filename):
             return None
 
@@ -1679,7 +1682,6 @@ class FileViewBase(Interface):
                                {'id': cls.ID_PANE_SHOW_IN_FINDER, 'label':f'Reveal in  {get_file_finder_name()}'},
                                {'id': cls.ID_PANE_SHOW_IN_BROWSING, 'label':'Reveal in Browsing panel'},
                                ]} )
-            return manager
         # activate the manager
         if manager:
             if activate:
