@@ -16,7 +16,7 @@ classifiers = [
 ]
 dependencies = [
           'wxpython>=4.2.1', 'matplotlib>=3.8.1', 'numpy', 'click', 'pandas',
-          'propgrid>=0.1.3', 'mplpanel>=0.1.2', 'aui2>=0.1.4',
+          'propgrid>=0.1.4', 'mplpanel>=0.1.6', 'aui2>=0.1.4',
       ]
 dynamic = ["version"]
 
