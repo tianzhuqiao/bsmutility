@@ -63,17 +63,16 @@ class BreakpointSettingsDlg(wx.Dialog):
         self.stLine = wx.StaticLine(self, style=wx.LI_HORIZONTAL)
         szAll.Add(self.stLine, 0, wx.EXPAND | wx.ALL, 5)
 
-        btnsizer = wx.StdDialogButtonSizer()
+        btnsizer = wx.BoxSizer(wx.HORIZONTAL)
+        btnsizer.AddStretchSpacer()
+        self.btnCancel = wx.Button(self, wx.ID_CANCEL)
+        btnsizer.Add(self.btnCancel, 0, wx.EXPAND | wx.ALL, 5)
 
         self.btnOK = wx.Button(self, wx.ID_OK)
         self.btnOK.SetDefault()
-        btnsizer.AddButton(self.btnOK)
+        btnsizer.Add(self.btnOK, 0, wx.EXPAND | wx.ALL, 5)
 
-        self.btnCancel = wx.Button(self, wx.ID_CANCEL)
-        btnsizer.AddButton(self.btnCancel)
-        btnsizer.Realize()
-
-        szAll.Add(btnsizer, 0, wx.ALIGN_RIGHT, 5)
+        szAll.Add(btnsizer, 0, wx.EXPAND | wx.ALL, 5)
 
         # initialize the controls
         self.condition = condition
@@ -696,10 +695,12 @@ class PyEditorPanel(PanelBase):
 
     def JumpToLine(self, lineno, highlight=False):
         """jump to the line and make sure it is visible"""
-        self.editor.GotoLine(lineno)
+        if lineno < 1:
+            return
+        self.editor.GotoLine(lineno-1)
         self.editor.SetFocus()
         if highlight:
-            self.editor.SelectLine(lineno)
+            self.editor.SelectLine(lineno-1)
         wx.CallLater(1, self.editor.EnsureCaretVisible)
 
     def GetCaption(self):
@@ -1004,7 +1005,7 @@ class Editor(FileViewBase):
                 editor = cls.open(f, add_to_history=False)
                 if editor:
                     if lineno > 0:
-                        editor.JumpToLine(lineno - 1)
+                        editor.JumpToLine(lineno)
 
     @classmethod
     def uninitializing(cls):
@@ -1055,7 +1056,7 @@ class Editor(FileViewBase):
         if editor and activated and not editor.IsShownOnScreen():
             dp.send('frame.show_panel', panel=editor, focus=True)
         if lineno > 0:
-            editor.JumpToLine(lineno - 1)
+            editor.JumpToLine(lineno)
         return editor
 
     @classmethod
