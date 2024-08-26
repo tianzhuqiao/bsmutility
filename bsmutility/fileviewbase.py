@@ -14,6 +14,7 @@ from pandas.api.types import is_numeric_dtype
 import matplotlib.pyplot as plt
 import aui2 as aui
 from propgrid import PropText, PropCheckBox
+from mplpanel.graph_subplot import refresh_legend
 from .bsmxpm import open_svg, refresh_svg, more_svg
 from .utility import FastLoadTreeCtrl, _dict, send_data_to_shell, get_variable_name
 from .utility import svg_to_bitmap, build_tree, flatten_tree
@@ -819,7 +820,8 @@ class TreeCtrlBase(FastLoadTreeCtrl):
         else:
             line = ax.plot(x, y, label=label, linestyle=ls, marker=ms)
 
-        ax.legend()
+        refresh_legend(ax)
+
         if ls is None:
             # 1st plot in axes
             ax.grid(True)
@@ -1203,9 +1205,6 @@ class TreeCtrlWithTimeStamp(TreeCtrlBase):
         df[self.timestamp_key] = x
         df[name] = y
         return df
-
-    def GetPlotXLabel(self):
-        return "t"
 
 
 class TreeCtrlNoTimeStamp(TreeCtrlBase):
