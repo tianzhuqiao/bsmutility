@@ -54,6 +54,7 @@ class FindListCtrl(wx.ListCtrl):
         self.SetAcceleratorTable(self.accel)
 
         self._copy_columns = None
+        self.wrapped = 0
 
     def OnRightClick(self, event):
 
@@ -318,6 +319,10 @@ class ListCtrlBase(FindListCtrl, ListCtrlAutoWidthMixin):
 class TreeCtrlBase(FastLoadTreeCtrl):
     """the tree control to show the hierarchy of the objects (dict)"""
 
+    XAXIS = 'xaxis'
+    ID_SET_X = wx.NewIdRef()
+    ID_EXPORT_WITH_X = wx.NewIdRef()
+
     ID_EXPORT = wx.NewIdRef()
     ID_PLOT = wx.NewIdRef()
     ID_CONVERT = wx.NewIdRef()
@@ -377,6 +382,9 @@ class TreeCtrlBase(FastLoadTreeCtrl):
         self.Bind(wx.EVT_TREE_BEGIN_DRAG, self.OnTreeBeginDrag)
 
         dp.connect(receiver=self.OnGraphDrop, signal='graph.drop')
+
+        self.x_path = None
+        self._convert_labels[self.XAXIS] = 'Set as x-axis'
 
     def GetConfigGroup(self):
         return  self.__class__.__name__
@@ -972,8 +980,17 @@ class TreeCtrlBase(FastLoadTreeCtrl):
                 for p, c in converted_item.items():
                     idx, settings = c
                     self.AddConvert(p, idx, settings)
+            # load the x_path after converted_item, as the converted_item may
+            # change the x_path
+            self.x_path = self.config_file.GetConfig(self.XAXIS, 'path')
 
         self.Fill(self.pattern)
+
+        if self.x_path is not None:
+            # check if x_path is still in the data, clear it if not
+            x = self.GetItemDataFromPath(self.x_path)
+            if x is None:
+                self.x_path = None
 
     def Fill(self, pattern=None):
         """fill the objects tree"""
@@ -1075,6 +1092,39 @@ class TreeCtrlBase(FastLoadTreeCtrl):
             return df, settings
         return None, None
 
+    def HasXaxisData(self, item):
+        return self.x_path is not None and self.x_path != self.GetItemPath(item)
+
+    def SetXaxisPath(self, path):
+        if self.x_path == path:
+            return
+        if self.x_path:
+            # clear the current x-axis data
+            item = self.FindItemFromPath(self.x_path)
+            if item is not None:
+                self.SetItemBold(item, False)
+        # select the new data as x-axis
+        self.x_path = path
+        if path:
+            item = self.FindItemFromPath(path)
+            if item is not None:
+                self.SetItemBold(item, True)
+
+        if self.config_file:
+            self.config_file.SetConfig(self.XAXIS, path=self.x_path)
+
+    def RefreshChildren(self, item):
+        super().RefreshChildren(item)
+        if self.x_path:
+            item = self.FindItemFromPath(self.x_path)
+            if item is not None and item.IsOk():
+                self.SetItemBold(item, True)
+
+    def GetItemXaxisData(self, item):
+        x = None
+        if self.HasXaxisData(item):
+            x = self.GetItemDataFromPath(self.x_path)
+        return x
 
 class TreeCtrlWithTimeStamp(TreeCtrlBase):
     # the leaf node is a DataFrame
@@ -1086,6 +1136,22 @@ class TreeCtrlWithTimeStamp(TreeCtrlBase):
         super().__init__(parent, style=style)
         # hide the "timestamp"
         self.exclude_keys = [self.timestamp_key]
+
+    def interpolate(self, t1, v1, t2):
+        # interpolate (v1, t1) to (v2, t2)
+        v2 = np.zeros(len(t2)).astype(v1.dtype)
+        t1_i = 0
+        t2_i = 0
+        while t1_i < len(t1) and t2_i < len(t2):
+            i = np.searchsorted(t2, t1[t1_i])
+            v2[t2_i:i] = v1[t1_i]
+            t2_i = i
+            if t2_i + 1 >= len(t2):
+                break
+            t1_i = np.searchsorted(t1, t2[t2_i+1])
+        if t2_i < len(t2):
+            v2[t2_i:] = v1[-1]
+        return v2
 
     def _has_pattern(self, d):
         if isinstance(d, pd.DataFrame):
@@ -1102,7 +1168,25 @@ class TreeCtrlWithTimeStamp(TreeCtrlBase):
             return None
         has_child = self.ItemHasChildren(item)
         if not has_child:
-            menu.Insert(1, self.ID_EXPORT_WITH_TIMESTAMP, "Export to shell with timestamp")
+            selections = self.GetSelections()
+            if not selections:
+                selections = [item]
+            item_added = 0
+            if len(selections) <= 1:
+                path = self.GetItemPath(item)
+                # single item selection
+                if self.x_path and self.x_path == path:
+                    mitem = menu.InsertCheckItem(0, self.ID_SET_X, "Unset as x-axis data")
+                    mitem.Check(True)
+                else:
+                    menu.InsertCheckItem(0, self.ID_SET_X, "Set as x-axis data")
+                menu.InsertSeparator(1)
+                item_added = 2
+
+            menu.Insert(1+item_added, self.ID_EXPORT_WITH_TIMESTAMP, "Export to shell with timestamp")
+            if self.HasXaxisData(item):
+                menu.Insert(2+item_added, self.ID_EXPORT_WITH_X, "Export to shell with x-axis data")
+
         return menu
 
     def GetItemExportData(self, item):
@@ -1136,12 +1220,25 @@ class TreeCtrlWithTimeStamp(TreeCtrlBase):
         return output_name, output
 
     def OnProcessCommand(self, cmd, item):
-        if cmd in [self.ID_EXPORT_WITH_TIMESTAMP]:
+        if cmd in [self.ID_EXPORT_WITH_TIMESTAMP, self.ID_EXPORT_WITH_X]:
             output_name, output = self.GetItemExportData(item)
             if isinstance(output, pd.DataFrame):
-                output.insert(0, column=self.timestamp_key, value=self.GetItemTimeStamp(item))
+                if cmd == self.ID_EXPORT_WITH_X:
+                    x = self.GetItemXaxisData(item)
+                    if x is not None:
+                        output.insert(0, column='x', value=x)
+                else:
+                    output.insert(0, column=self.timestamp_key, value=self.GetItemTimeStamp(item))
 
             send_data_to_shell(output_name, output)
+        elif cmd == self.ID_SET_X:
+            path = self.GetItemPath(item)
+            if self.x_path != path:
+                # select the new data as x-axis
+                self.SetXaxisPath(path)
+            else:
+                # clear the current x-axis
+                self.SetXaxisPath(None)
         else:
             super().OnProcessCommand(cmd, item)
 
@@ -1169,11 +1266,30 @@ class TreeCtrlWithTimeStamp(TreeCtrlBase):
         path = self.GetItemPath(item)
         return self.GetItemTimeStampFromPath(path)
 
+    def GetItemXaxisData(self, item):
+        x = super().GetItemXaxisData(item)
+        if x is not None:
+            t1 = self.GetItemTimeStampFromPath(self.x_path)
+            x1 = x
+            t2 = self.GetItemTimeStamp(item)
+            if t1 is not None and x1 is not None:
+                x = self.interpolate(t1.to_numpy(), x1.to_numpy(), t2.to_numpy())
+            else:
+                # not able to interpolate, set it to None as the length may be
+                # different from the data
+                x = None
+        return x
+
     def GetItemPlotData(self, item):
         if self.ItemHasChildren(item):
             return None, None
         y = self.GetItemData(item)
-        x = self.GetItemTimeStamp(item)
+        x = None
+        if self.x_path is not None:
+            x = self.GetItemXaxisData(item)
+        if x is None:
+            x = self.GetItemTimeStamp(item)
+
         return x, y
 
     def FlattenTree(self, data):
@@ -1209,37 +1325,12 @@ class TreeCtrlWithTimeStamp(TreeCtrlBase):
 
 class TreeCtrlNoTimeStamp(TreeCtrlBase):
     # the data doesn't have timestamp, so let the user selects the x-axis data
-    XAXIS = 'xaxis'
-    ID_SET_X = wx.NewIdRef()
-    ID_EXPORT = wx.NewIdRef()
-    ID_EXPORT_WITH_X = wx.NewIdRef()
-    ID_PLOT = wx.NewIdRef()
-
-    def __init__(self, *args, **kwargs):
-        TreeCtrlBase.__init__(self, *args, **kwargs)
-        self.x_path = None
-        self._convert_labels[self.XAXIS] = 'Set as x-axis'
-
-    def Load(self, data, filename=None):
-        super().Load(data, filename)
-        if self.x_path is not None:
-            # check if x_path is still in the data, clear it if not
-            x = self.GetItemDataFromPath(self.x_path)
-            if x is None:
-                self.x_path = None
 
     def AddConvert(self, p, idx, settings):
         rtn = super().AddConvert(p, idx, settings)
         if rtn and settings.get(self.XAXIS, False):
             self.SetXaxisPath(get_tree_item_path(p))
         return rtn
-
-    def RefreshChildren(self, item):
-        super().RefreshChildren(item)
-        if self.x_path:
-            item = self.FindItemFromPath(self.x_path)
-            if item is not None and item.IsOk():
-                self.SetItemBold(item, True)
 
     def GetConvertItemProp(self, item, inputs, outputs):
         # the configuration props used to convert an item
@@ -1265,28 +1356,13 @@ class TreeCtrlNoTimeStamp(TreeCtrlBase):
                 self.SetXaxisPath(path)
         return new_item, settings
 
-    def SetXaxisPath(self, path):
-        if self.x_path == path:
-            return
-        if self.x_path:
-            # clear the current x-axis data
-            item = self.FindItemFromPath(self.x_path)
-            if item is not None:
-                self.SetItemBold(item, False)
-        # select the new data as x-axis
-        self.x_path = path
-        if path:
-            item = self.FindItemFromPath(path)
-            if item is not None:
-                self.SetItemBold(item, True)
-
     def GetItemPlotData(self, item):
         if self.ItemHasChildren(item):
             return None, None
 
         y = self.GetItemData(item)
         x = None
-        if self.x_path is not None and self.GetItemPath(item) != self.x_path:
+        if self.HasXaxisData(item):
             x = self.GetItemDataFromPath(self.x_path)
             if len(x) != len(y):
                 name = self.GetItemText(item)
@@ -1308,6 +1384,7 @@ class TreeCtrlNoTimeStamp(TreeCtrlBase):
         if not selections:
             selections = [item]
         path = self.GetItemPath(item)
+        item_added = 0
         if len(selections) <= 1:
             # single item selection
             if self.x_path and self.x_path == path:
@@ -1316,9 +1393,10 @@ class TreeCtrlNoTimeStamp(TreeCtrlBase):
             else:
                 menu.InsertCheckItem(0, self.ID_SET_X, "Set as x-axis data")
             menu.InsertSeparator(1)
+            item_added = 2
 
         if self.x_path and (self.x_path != path or len(selections) > 1):
-            menu.Insert(3, self.ID_EXPORT_WITH_X, "Export to shell with x-axis data")
+            menu.Insert(1+item_added, self.ID_EXPORT_WITH_X, "Export to shell with x-axis data")
         return menu
 
     def GetItemExportData(self, item):
