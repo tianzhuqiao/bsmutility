@@ -25,9 +25,10 @@ class AuiManagerPlus(aui.AuiManager):
                                                 aui.auibook.AuiNotebook):
             idx = parent.GetPageIndex(window)
             parent.SetPageText(idx, pane.caption)
+            parent.SetPageTooltip(idx, pane.tooltip)
             if idx == parent.GetSelection():
                 page_info = self.GetPane(parent)
-                page_info.Caption(pane.caption)
+                page_info.Caption(pane.caption).Tooltip(pane.tooltip)
         self.RefreshCaptions()
         parent.Update()
 
@@ -129,7 +130,27 @@ class FramePlus(wx.Frame):
         dp.connect(self.UpdateMenu, 'frame.update_menu')
         dp.connect(self.SetConfig, 'frame.set_config')
         dp.connect(self.GetConfig, 'frame.get_config')
+        dp.connect(self.SetPanelTitle, 'frame.set_panel_title')
+        dp.connect(self.ShowStatusText, 'frame.show_status_text')
+        dp.connect(self.AddFileHistory, 'frame.add_file_history')
         self.Bind(wx.EVT_CLOSE, self.OnClose)
+
+    def AddFileHistory(self, filename):
+        pass
+
+    def ShowStatusText(self, text, index=0, width=-1):
+        pass
+
+    def SetPanelTitle(self, pane, title, tooltip=None):
+        """set the panel title"""
+        if pane:
+            info = self._mgr.GetPane(pane)
+            if info and info.IsOk() and info.caption != title:
+                info.Caption(title)
+                if tooltip is not None:
+                    info.Tooltip(tooltip)
+                self._mgr.RefreshPaneCaption(pane)
+                self.UpdatePaneMenuLabel()
 
     def SetConfig(self, group, **kwargs):
         if not group.startswith('/'):
@@ -378,6 +399,7 @@ class FramePlus(wx.Frame):
                  direction='top',
                  minsize=None,
                  pane_menu=None,
+                 tooltip=""
                  ):
         """add the panel to AUI"""
         if not panel:
@@ -425,7 +447,7 @@ class FramePlus(wx.Frame):
                           .Row(-1).Position(99)
 
         auipaneinfo.Caption(title).DestroyOnClose(not showhidemenu).Icon(icon)\
-                   .Direction(direction)
+                   .Direction(direction).Tooltip(tooltip)
 
         if not self._mgr.GetAllPanes():
             # set the first pane to be center pane

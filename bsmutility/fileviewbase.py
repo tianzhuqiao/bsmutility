@@ -1495,7 +1495,7 @@ class PanelBase(wx.Panel):
         if add_to_history:
             dp.send('frame.add_file_history', filename=filename)
         title = self.GetCaption()
-        dp.send('frame.set_panel_title', pane=self, title=title)
+        dp.send('frame.set_panel_title', pane=self, title=title, tooltip=filename)
 
     def Destroy(self):
         """
@@ -1535,7 +1535,7 @@ class PanelBase(wx.Panel):
                 filename = dlg.GetPath()
                 self.Load(filename=filename)
                 title = self.GetCaption()
-                dp.send('frame.set_panel_title', pane=self, title=title)
+                dp.send('frame.set_panel_title', pane=self, title=title, tooltip=filename)
             dlg.Destroy()
         elif eid == self.ID_REFRESH:
             if self.filename:
@@ -1758,7 +1758,8 @@ class FileViewBase(Interface):
                                {'type': wx.ITEM_SEPARATOR},
                                {'id': cls.ID_PANE_SHOW_IN_FINDER, 'label':f'Reveal in  {get_file_finder_name()}'},
                                {'id': cls.ID_PANE_SHOW_IN_BROWSING, 'label':'Reveal in Browsing panel'},
-                               ]} )
+                               ]},
+                           tooltip=filename)
         # activate the manager
         if manager:
             if activate:
