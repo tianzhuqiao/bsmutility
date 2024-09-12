@@ -1551,6 +1551,7 @@ class PanelBase(wx.Panel):
 
 class PanelNotebookBase(PanelBase):
     ID_MORE = wx.NewIdRef()
+    ID_CONFIRM_CLOSE = wx.NewIdRef()
     ID_CONVERT_CUSTOM = wx.NewIdRef()
     ID_CONVERT_MANAGE = wx.NewIdRef()
 
@@ -1609,9 +1610,21 @@ class PanelNotebookBase(PanelBase):
         menu = None
         if isinstance(self.tree, TreeCtrlBase):
             menu = wx.Menu()
+            mitem = menu.AppendCheckItem(self.ID_CONFIRM_CLOSE, "Confirm before close window")
+            mitem.Check(self.GetConfirmClose())
+            menu.AppendSeparator()
             menu.Append(self.ID_CONVERT_CUSTOM, "Add custom convert")
             menu.Append(self.ID_CONVERT_MANAGE, "Manage custom convert")
         return menu
+
+    def SetConfirmClose(self, confirm):
+        resp = dp.send('frame.set_config', group=self.__class__.__name__, confirm_when_close=confirm)
+
+    def GetConfirmClose(self):
+        resp = dp.send('frame.get_config', group=self.__class__.__name__, key='confirm_when_close')
+        if resp and resp[0][1] is not None:
+            return resp[0][1]
+        return True
 
     def OnProcessCommand(self, event):
         eid = event.GetId()
@@ -1619,6 +1632,8 @@ class PanelNotebookBase(PanelBase):
             menu = self.GetMoreMenu()
             if menu is not None:
                 self.PopupMenu(menu)
+        elif eid == self.ID_CONFIRM_CLOSE:
+            self.SetConfirmClose(not self.GetConfirmClose())
         elif eid == self.ID_CONVERT_CUSTOM:
             if isinstance(self.tree, TreeCtrlBase):
                 self.tree.AddCustomizedConvert()
@@ -1662,6 +1677,7 @@ class FileViewBase(Interface):
         dp.connect(receiver=cls.set_active, signal='frame.activate_panel')
         dp.connect(receiver=cls.open, signal='frame.file_drop')
         dp.connect(cls.PaneMenu, f'bsm.{cls.name}.pane_menu')
+        dp.connect(cls.OnFrameClosePane, 'frame.close_pane')
 
     @classmethod
     def get_menu(cls):
@@ -1799,6 +1815,18 @@ class FileViewBase(Interface):
             mgrs =  cls.panel_type.get_all_managers()
             for mgr in mgrs:
                 dp.send(signal='frame.delete_panel', panel=mgr)
+
+    @classmethod
+    def OnFrameClosePane(cls, event):
+        pane = event.GetPane().window
+        if isinstance(pane, cls.panel_type):
+            if pane.GetConfirmClose():
+                msg = f'Do you want to close "{event.GetPane().caption}"?'
+                dlg = wx.MessageDialog(pane.GetTopLevelParent(), msg, event.GetPane().caption, wx.YES_NO)
+                result = dlg.ShowModal() == wx.ID_YES
+                dlg.Destroy()
+                if not result:
+                    event.Veto()
 
     @classmethod
     def get_manager(cls, num=None, filename=None, active=True):
