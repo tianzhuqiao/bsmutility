@@ -10,7 +10,7 @@ class Interface:
             # already initialized
             return
         cls.frame = frame
-        
+
         dp.connect(receiver=cls.initialized, signal='frame.initialized')
         dp.connect(receiver=cls.uninitializing, signal='frame.exiting')
         dp.connect(receiver=cls.uninitialized, signal='frame.exit')
@@ -24,7 +24,7 @@ class Interface:
     def uninitializing(cls):
         # before save perspective
         pass
-    
+
     @classmethod
     def uninitialized(cls):
         # after save perspective

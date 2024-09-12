@@ -981,11 +981,9 @@ class Editor(FileViewBase):
             # if it has already initialized, simply return
             return
 
-
         super().initialize(frame, **kwargs)
 
         dp.connect(cls.OnFrameClosing, 'frame.closing')
-        dp.connect(cls.OnFrameClosePane, 'frame.close_pane')
         dp.connect(cls.DebugPaused, 'debugger.paused')
         dp.connect(cls.DebugUpdateScope, 'debugger.update_scopes')
 
@@ -1023,11 +1021,10 @@ class Editor(FileViewBase):
         dp.send('frame.set_config', group='editor', opened=files)
 
         dp.disconnect(cls.OnFrameClosing, 'frame.closing')
-        dp.disconnect(cls.OnFrameClosePane, 'frame.close_pane')
         dp.disconnect(cls.DebugPaused, 'debugger.paused')
         dp.disconnect(cls.DebugUpdateScope, 'debugger.update_scopes')
         # delete all editors
-        super().uninitializing()
+        super().uninitialized()
 
     @classmethod
     def findEditorByFileName(cls, filename):

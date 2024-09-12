@@ -1712,6 +1712,15 @@ class FileViewBase(Interface):
             dp.send('frame.delete_menu', path=menu, id=cls.IDS[key])
 
     @classmethod
+    def uninitialized(cls):
+        super().uninitialized()
+        dp.disconnect(receiver=cls.process_command, signal=f'bsm.{cls.name}')
+        dp.disconnect(receiver=cls.set_active, signal='frame.activate_panel')
+        dp.disconnect(receiver=cls.open, signal='frame.file_drop')
+        dp.disconnect(receiver=cls.PaneMenu, signal=f'bsm.{cls.name}.pane_menu')
+        dp.disconnect(receiver=cls.OnFrameClosePane, signal='frame.close_pane')
+
+    @classmethod
     def process_command(cls, command):
         if command == cls.IDS.get('open', None):
             style = wx.FD_OPEN | wx.FD_FILE_MUST_EXIST
@@ -1739,7 +1748,7 @@ class FileViewBase(Interface):
 
         If the file has already been opened, return its handler; otherwise, create it.
         """
-        if not os.path.isfile(filename):
+        if filename is not None and not os.path.isfile(filename):
             return None
 
         if not cls.check_filename(filename):
@@ -1775,7 +1784,7 @@ class FileViewBase(Interface):
                                {'id': cls.ID_PANE_SHOW_IN_FINDER, 'label':f'Reveal in  {get_file_finder_name()}'},
                                {'id': cls.ID_PANE_SHOW_IN_BROWSING, 'label':'Reveal in Browsing panel'},
                                ]},
-                           tooltip=filename)
+                           tooltip=filename or "")
         # activate the manager
         if manager:
             if activate:
