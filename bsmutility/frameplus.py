@@ -11,27 +11,6 @@ class AuiManagerPlus(aui.AuiManager):
                                 managed_window=managed_window,
                                 agwFlags=agwFlags)
 
-    def RefreshPaneCaption(self, window):
-        """used to rename a panel"""
-        if window is None:
-            return
-        pane = self.GetPane(window)
-        if not pane.IsOk():
-            return
-        parent = window.GetParent()
-        if parent is None:
-            return
-        if pane.IsNotebookPage() and isinstance(parent,
-                                                aui.auibook.AuiNotebook):
-            idx = parent.GetPageIndex(window)
-            parent.SetPageText(idx, pane.caption)
-            parent.SetPageTooltip(idx, pane.tooltip)
-            if idx == parent.GetSelection():
-                page_info = self.GetPane(parent)
-                page_info.Caption(pane.caption).Tooltip(pane.tooltip)
-        self.RefreshCaptions()
-        parent.Update()
-
     def CreateNotebook(self):
         """
         Creates an automatic :class:`~wx.lib.agw.aui.auibook.AuiNotebook` when a pane is docked on
@@ -144,13 +123,8 @@ class FramePlus(wx.Frame):
     def SetPanelTitle(self, pane, title, tooltip=None):
         """set the panel title"""
         if pane:
-            info = self._mgr.GetPane(pane)
-            if info and info.IsOk() and info.caption != title:
-                info.Caption(title)
-                if tooltip is not None:
-                    info.Tooltip(tooltip)
-                self._mgr.RefreshPaneCaption(pane)
-                self.UpdatePaneMenuLabel()
+            self._mgr.SetPaneTitle(pane, title=title, tooltip=tooltip)
+            self.UpdatePaneMenuLabel()
 
     def SetConfig(self, group, **kwargs):
         if not group.startswith('/'):
