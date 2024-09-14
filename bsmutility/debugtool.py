@@ -120,7 +120,8 @@ class DebugTool(Interface):
                 panel=cls.panelStack,
                 title="Call Stack",
                 active=False,
-                showhidemenu='View:Panels:Call Stack')
+                showhidemenu='View:Panels:Call Stack',
+                name='call_stack')
 
         # debugger toolbar
         dp.send('frame.add_menu',
@@ -154,7 +155,8 @@ class DebugTool(Interface):
                 active=False,
                 paneInfo=aui.AuiPaneInfo().Name('debugger').Caption(
                     'Debugger').ToolbarPane().Top(),
-                showhidemenu='View:Toolbars:Debugger')
+                showhidemenu='View:Toolbars:Debugger',
+                name='debug_toolbar')
         dp.connect(cls.OnUpdateMenuUI, 'debugtool.updateui')
         dp.connect(cls.OnDebugPaused, 'debugger.paused')
         dp.connect(cls.OnDebugEnded, 'debugger.ended')

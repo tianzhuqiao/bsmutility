@@ -715,7 +715,7 @@ class PyEditorPanel(PanelBase):
             return
         self.was_modified = self.editor.GetModify()
         dp.send('frame.set_panel_title', pane=self, title=self.GetCaption(),
-                tooltip=self.filename)
+                tooltip=self.filename, name=self.filename)
 
     def Load(self, filename, add_to_history=True):
         """open file"""
@@ -758,7 +758,8 @@ class PyEditorPanel(PanelBase):
         if not self.filename:
             return
         self.editor.SaveFile(self.filename)
-        dp.send('frame.set_panel_title', pane=self, title=self.GetCaption(), tooltip=self.filename)
+        dp.send('frame.set_panel_title', pane=self, title=self.GetCaption(),
+                tooltip=self.filename, name=self.filename)
         self.was_modified = False
         self.update_bp()
 
@@ -780,7 +781,8 @@ class PyEditorPanel(PanelBase):
             self.filename = path
             dlg.Destroy()
         self.editor.SaveFile(self.filename)
-        dp.send('frame.set_panel_title', pane=self, title=self.GetCaption(), tooltip=self.filename)
+        dp.send('frame.set_panel_title', pane=self, title=self.GetCaption(),
+                tooltip=self.filename, name=self.filename)
         self.was_modified = False
         self.update_bp()
 

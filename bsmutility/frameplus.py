@@ -328,10 +328,14 @@ class FramePlus(wx.Frame):
     def ShowStatusText(self, text, index=0, width=-1):
         pass
 
-    def SetPanelTitle(self, pane, title, tooltip=None):
+    def SetPanelTitle(self, pane, title, tooltip=None, name=None):
         """set the panel title"""
         if pane:
             self._mgr.SetPaneTitle(pane, title=title, tooltip=tooltip)
+            if name is not None:
+                info = self._mgr.GetPane(pane)
+                if info and info.IsOk():
+                    info.Name(name)
             self.UpdatePaneMenuLabel()
 
     def SetConfig(self, group, **kwargs):
@@ -597,7 +601,8 @@ class FramePlus(wx.Frame):
                  direction='top',
                  minsize=None,
                  pane_menu=None,
-                 tooltip=""
+                 tooltip="",
+                 name=""
                  ):
         """add the panel to AUI"""
         if not panel:
@@ -653,7 +658,8 @@ class FramePlus(wx.Frame):
             active = True
 
         # auto generate the unique panel name
-        name = "pane-%d" % self._pane_num
+        if name == "":
+            name = "pane-%d" % self._pane_num
         self._pane_num += 1
         auipaneinfo.Name(name)
         if minsize:
