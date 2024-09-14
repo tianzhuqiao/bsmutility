@@ -4,7 +4,6 @@ import re
 import traceback
 import time
 import pydoc
-import glob
 import shlex
 import six.moves.builtins as __builtin__
 import six
@@ -16,6 +15,7 @@ from wx.py.pseudo import PseudoFile
 from .debugger import EngineDebugger
 from .editor_base import EditorTheme, EditorFind
 from .shell_base import magic, aliasDict, sx
+from .utility import get_path_list
 
 
 # in linux, the multiprocessing/process.py/_bootstrap will call
@@ -289,35 +289,6 @@ class Shell(pyshell.Shell):
             cmp = [c for c in cmp if c.lower().startswith(part)]
         return cmp
 
-    def getPathList(self, path=None, prefix='', files=True, folders=True):
-        paths = []
-        if path is None:
-            path = os.getcwd()
-        def _getPathList(pattern):
-            # get folders or files
-            f = glob.glob(pattern)
-            # remove common "path"
-            f = [os.path.relpath(folder, path) for folder in f]
-            # check if start with prefix
-            f = [folder for folder in f if folder.lower().startswith(prefix.lower())]
-            # replace ' ' with '\ ' or put the path in quotes to indicate it is a
-            # space in path not in command
-            if wx.Platform == '__WXMSW__':
-                f = [ f'"{p}"' if ' ' in p else p for p in f]
-            else:
-                f = [p.replace(' ', r'\ ') for p in f]
-            return f
-
-        if folders:
-            f = _getPathList(os.path.join(path, '*/'))
-            f = [folder + '/' for folder in f]
-            paths += sorted(f, key=str.casefold)
-        if files:
-            f = _getPathList(os.path.join(path, '*.*'))
-            paths += sorted(f, key=str.casefold)
-
-        return paths
-
     def getAutoCallTip(self, command, *args, **kwds):
         # remove additional key from wx.py.dispatcher.send
         kwds.pop('sender', None)
@@ -476,10 +447,10 @@ class Shell(pyshell.Shell):
                     prefix = cmds[-1] if len(cmds) > 1 else ''
                     path, prefix = os.path.split(prefix)
                     if cmd_main in ['cd', '!cd', '!rmdir', '!mkdir']:
-                        k = self.getPathList(path=path, prefix=prefix, files=False)
+                        k = get_path_list(path=path, prefix=prefix, files=False)
                     elif cmd_main in ['ls', '!ls', '!less', '!more', '!cp', '!mv',\
                                       '!rm', '!gvim']:
-                        k = self.getPathList(path=path, prefix=prefix)
+                        k = get_path_list(path=path, prefix=prefix)
                     lengthEntered = len(prefix)
                     if ' ' in prefix:
                         if wx.Platform == '__WXMSW__':

@@ -15,9 +15,10 @@ from .bsmxpm import backward_svg2, backward_gray_svg2, forward_svg2, \
                     forward_gray_svg2, up_svg, home_svg2, more_svg
 from .autocomplete import AutocompleteTextCtrl
 from .utility import FastLoadTreeCtrl, svg_to_bitmap, open_file_with_default_app, \
-                     show_file_in_finder, get_file_finder_name
+                     show_file_in_finder, get_file_finder_name, get_path_list
 from .editor_base import EditorBase
 from .bsminterface import Interface
+from .autocomplete import AutocompleteComboBox
 
 class HelpText(EditorBase):
 
@@ -155,7 +156,6 @@ class HelpPanel(wx.Panel):
             dp.send('frame.show_panel', panel=self)
 
     def OnDoSearch(self, evt):
-        self.SaveConfig()
         command = self.search.GetValue()
         self.show_help(command)
 
@@ -475,7 +475,6 @@ class HistoryPanel(wx.Panel):
             self.history = {}
 
     def OnDoSearch(self, evt):
-        self.SaveConfig()
         self.LoadHistory()
 
 class DirPanel(wx.Panel):
@@ -515,7 +514,10 @@ class DirPanel(wx.Panel):
         self.tb.AddSimpleTool(self.ID_GOTO_HOME, 'Home',
                               svg_to_bitmap(home_svg2, win=self), 'Current folder')
 
-        self.tb.AddStretchSpacer()
+        self.address = AutocompleteComboBox(self.tb, completer=self.completer)
+        item = self.tb.AddControl(self.address)
+        item.SetProportion(1)
+
         self.showHidden = True
         self.tb.AddSimpleTool(self.ID_MORE, 'More ...',
                               svg_to_bitmap(more_svg, win=self), 'More ...')
@@ -523,6 +525,9 @@ class DirPanel(wx.Panel):
         self.Bind(wx.EVT_TOOL, self.OnMenuDropDown, id=self.ID_MORE)
         self.Bind(wx.EVT_MENU, self.OnProcessMenu, id=self.ID_SHOW_HIDDEN)
         self.Bind(wx.EVT_MENU, self.OnProcessMenu, id=self.ID_SHOW_PATTERN_TOOLBAR)
+
+        self.Bind(wx.EVT_TEXT_ENTER, self.OnGoToAddress, self.address)
+        self.Bind(wx.EVT_COMBOBOX, self.OnGoToAddress, self.address)
 
         self.tb.Realize()
         self.dirtree = DirTreeCtrl(self,
@@ -552,7 +557,6 @@ class DirPanel(wx.Panel):
         self.history = []
         self.history_index = 0
         self.LoadConfig()
-        self.SetRootDir(os.getcwd())
 
         self.Bind(wx.EVT_TOOL, self.OnGotoHome, id=self.ID_GOTO_HOME)
         self.Bind(wx.EVT_TOOL, self.OnGotoParent, id=self.ID_GOTO_PARENT)
@@ -582,6 +586,12 @@ class DirPanel(wx.Panel):
         dp.connect(receiver=self.GoTo, signal='dirpanel.goto')
         self.active_items = []
 
+    def completer(self, query):
+
+        path, prefix = os.path.split(query)
+        k = get_path_list(path=path, prefix=prefix, files=False)
+        return k, k, len(prefix)
+
     def LoadConfig(self):
         resp = dp.send('frame.get_config', group='dirpanel', key='show_hidden')
         if resp and resp[0][1] is not None:
@@ -596,10 +606,25 @@ class DirPanel(wx.Panel):
             self.Layout()
             self.Update()
 
+        resp = dp.send('frame.get_config', group='dirpanel', key='path_list')
+        if resp and resp[0][1] is not None:
+            items = resp[0][1]
+            self.address.SetItems(items)
+
+        resp = dp.send('frame.get_config', group='dirpanel', key='path_active')
+        path = os.getcwd()
+        if resp and resp[0][1] is not None:
+            path = resp[0][1]
+
+        self.doGoToAddress(path)
+
     def SaveConfig(self):
         dp.send('frame.set_config', group='dirpanel', show_hidden=self.showHidden)
         dp.send('frame.set_config', group='dirpanel', file_pattern=self.search.GetValue())
         dp.send('frame.set_config', group='dirpanel', show_pattern_toolbar=self.tb2.IsShown())
+
+        dp.send('frame.set_config', group='dirpanel', path_active=self.address.GetValue())
+        dp.send('frame.set_config', group='dirpanel', path_list=self.address.GetItems())
 
     def OnMenuDropDown(self, event):
         menu = wx.Menu()
@@ -631,8 +656,6 @@ class DirPanel(wx.Panel):
             self.Layout()
             self.Update()
 
-        self.SaveConfig()
-
     def GoTo(self, filepath, show=None):
         folder = filepath
         if os.path.isfile(filepath):
@@ -640,7 +663,7 @@ class DirPanel(wx.Panel):
         if not os.path.isdir(folder):
             return
 
-        self.SetRootDir(folder)
+        self.doGoToAddress(folder)
         if os.path.isfile(filepath):
             filename = os.path.basename(filepath)
             root_item = self.dirtree.GetRootItem()
@@ -682,7 +705,7 @@ class DirPanel(wx.Panel):
             else:
                 return
             if self.dirtree.ItemHasChildren(item):
-                self.SetRootDir(filepath)
+                self.doGoToAddress(filepath)
                 return
             (_, ext) = os.path.splitext(filename)
 
@@ -705,6 +728,24 @@ class DirPanel(wx.Panel):
         currentItem = event.GetItem()
         self.open([currentItem])
 
+    def doGoToAddress(self, path):
+        if os.path.isdir(path):
+            self.SetRootDir(path)
+            while True:
+                item = self.address.FindString(path)
+                if item == wx.NOT_FOUND:
+                    break
+                self.address.Delete(item)
+            self.address.Insert(path, 0)
+            wx.CallAfter(self.address.ChangeValue, path)
+            wx.CallAfter(self.address.SetInsertionPointEnd)
+        else:
+            print(f"Invalid folder: {path}")
+
+    def OnGoToAddress(self, event):
+        path = self.address.GetValue()
+        self.doGoToAddress(path)
+
     def OnGotoHome(self, event):
         root = self.dirtree.GetRootItem()
         if not root:
@@ -713,7 +754,7 @@ class DirPanel(wx.Panel):
         if isinstance(d, Directory):
             if d.directory == os.getcwd():
                 return
-        self.SetRootDir(os.getcwd())
+        self.doGoToAddress(os.getcwd())
 
     def OnGotoParent(self, event):
         root = self.dirtree.GetRootItem()
@@ -724,21 +765,20 @@ class DirPanel(wx.Panel):
             path = os.path.abspath(os.path.join(d.directory, os.path.pardir))
             if path == d.directory:
                 return
-            self.SetRootDir(path)
+            self.doGoToAddress(path)
 
     def OnBack(self, event):
         # the button is only enabled when history_index>0
         root = self.history[self.history_index-1]
-        self.SetRootDir(root)
+        self.doGoToAddress(root)
 
     def OnForward(self, event):
         # the button is only enable when history_index hasn't reached the last
         # one
         root = self.history[self.history_index+1]
-        self.SetRootDir(root)
+        self.doGoToAddress(root)
 
     def OnDoSearch(self, evt):
-        self.SaveConfig()
         self.SetRootDir()
 
     def OnRightClick(self, event):
@@ -831,7 +871,7 @@ class DirPanel(wx.Panel):
                         files_copied.append(os.path.basename(src))
                 wx.TheClipboard.Close()
                 if files_copied:
-                    self.SetRootDir(root_dir)
+                    self.doGoToAddress(root_dir)
                     root_item = self.dirtree.GetRootItem()
                     item, cookie = self.dirtree.GetFirstChild(root_item)
                     while item.IsOk():
@@ -913,7 +953,6 @@ class DirPanel(wx.Panel):
                 self.history_index = len(self.history)-1
 
     def OnShowHidden(self, event):
-        self.SaveConfig()
         self.SetRootDir()
 
     def OnUpdateUI(self, event):
@@ -929,35 +968,55 @@ class DirPanel(wx.Panel):
 
 class MiscTools(Interface):
 
+    panelHistory = None
+    panelHelp = None
+    panelDir = None
+
     @classmethod
-    def initialize(cls, frame, **kwargs):
+    def initialize(cls, frame, history_panel=True, help_panel=True, dir_panel=True,
+                   **kwargs):
         super().initialize(frame, **kwargs)
 
         active = kwargs.get('active', True)
         direction = kwargs.get('direction', 'top')
         # history panel
-        cls.panelHistory = HistoryPanel(frame)
-        dp.send(signal='frame.add_panel',
-                panel=cls.panelHistory,
-                title="History",
-                showhidemenu='View:Panels:Command History',
-                active=active,
-                direction=direction)
+        if history_panel:
+            cls.panelHistory = HistoryPanel(frame)
+            dp.send(signal='frame.add_panel',
+                    panel=cls.panelHistory,
+                    title="History",
+                    showhidemenu='View:Panels:Command History',
+                    active=active,
+                    direction=direction,
+                    name="history")
         # help panel
-        cls.panelHelp = HelpPanel(frame)
-        dp.send(signal='frame.add_panel',
-                panel=cls.panelHelp,
-                title="Help",
-                target='History',
-                showhidemenu='View:Panels:Command Help',
-                active=active,
-                direction=direction)
+        if help_panel:
+            cls.panelHelp = HelpPanel(frame)
+            dp.send(signal='frame.add_panel',
+                    panel=cls.panelHelp,
+                    title="Help",
+                    target='History',
+                    showhidemenu='View:Panels:Command Help',
+                    active=active,
+                    direction=direction,
+                    name='help')
         # directory panel
-        cls.panelDir = DirPanel(frame)
-        dp.send(signal='frame.add_panel',
-                panel=cls.panelDir,
-                title="Browsing",
-                target="History",
-                showhidemenu='View:Panels:Browsing',
-                active=active,
-                direction=direction)
+        if dir_panel:
+            cls.panelDir = DirPanel(frame)
+            dp.send(signal='frame.add_panel',
+                    panel=cls.panelDir,
+                    title="Browsing",
+                    target="History",
+                    showhidemenu='View:Panels:Browsing',
+                    active=active,
+                    direction=direction,
+                    name='browsing')
+
+    @classmethod
+    def uninitializing(cls):
+        if cls.panelHistory is not None:
+            cls.panelHistory.SaveConfig()
+        if cls.panelHelp is not None:
+            cls.panelHelp.SaveConfig()
+        if cls.panelDir is not None:
+            cls.panelDir.SaveConfig()
