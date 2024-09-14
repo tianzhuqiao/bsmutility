@@ -325,6 +325,13 @@ class FramePlus(wx.Frame):
         self.filehistory.Save(self.config)
         self.config.Flush()
 
+    def OnMenuFileHistory(self, event):
+        """open the recent file"""
+        fileNum = event.GetId() - self.ids_file_history[0].GetId()
+        path = self.filehistory.GetHistoryFile(fileNum)
+        self.filehistory.AddFileToHistory(path)
+        self.doOpenFile(path)
+
     def ShowStatusText(self, text, index=0, width=-1):
         pass
 
