@@ -6,6 +6,8 @@ import sys
 import re
 import shutil
 import six
+import platform
+import pathlib
 import wx
 import wx.py.dispatcher as dp
 import wx.svg
@@ -483,6 +485,8 @@ class DirPanel(wx.Panel):
     ID_GOTO_HOME = wx.NewIdRef()
     ID_COPY_PATH = wx.NewIdRef()
     ID_COPY_PATH_REL = wx.NewIdRef()
+    ID_COPY_PATH_POSIX = wx.NewIdRef()
+    ID_COPY_PATH_REL_POSIX = wx.NewIdRef()
     ID_OPEN_IN_FINDER = wx.NewIdRef()
     ID_RENAME = wx.NewIdRef()
     ID_PASTE_FOLDER = wx.NewIdRef()
@@ -568,7 +572,7 @@ class DirPanel(wx.Panel):
 
         self.Bind(wx.EVT_TEXT, self.OnDoSearch, self.search)
         self.Bind(wx.EVT_CONTEXT_MENU, self.OnRightClick, self.dirtree)
-        self.Bind(wx.EVT_TREE_ITEM_RIGHT_CLICK, self.OnRightClickItem, self.dirtree)
+        self.Bind(wx.EVT_TREE_ITEM_MENU, self.OnRightClickItem, self.dirtree)
         self.Bind(wx.EVT_TREE_END_LABEL_EDIT, self.OnRename, self.dirtree)
 
         self.Bind(wx.EVT_MENU, self.OnProcessEvent, id=wx.ID_OPEN)
@@ -578,6 +582,8 @@ class DirPanel(wx.Panel):
         self.Bind(wx.EVT_MENU, self.OnProcessEvent, id=self.ID_OPEN_IN_FINDER)
         self.Bind(wx.EVT_MENU, self.OnProcessEvent, id=self.ID_COPY_PATH)
         self.Bind(wx.EVT_MENU, self.OnProcessEvent, id=self.ID_COPY_PATH_REL)
+        self.Bind(wx.EVT_MENU, self.OnProcessEvent, id=self.ID_COPY_PATH_POSIX)
+        self.Bind(wx.EVT_MENU, self.OnProcessEvent, id=self.ID_COPY_PATH_REL_POSIX)
         self.Bind(wx.EVT_MENU, self.OnProcessEvent, id=self.ID_RENAME)
         self.Bind(wx.EVT_MENU, self.OnProcessEvent, id=wx.ID_NEW)
         self.Bind(wx.EVT_MENU, self.OnProcessEvent, id=self.ID_PASTE_FOLDER)
@@ -798,6 +804,11 @@ class DirPanel(wx.Panel):
         menu.AppendSeparator()
         menu.Append(self.ID_COPY_PATH, "Copy Path\tAlt+Ctrl+C")
         menu.Append(self.ID_COPY_PATH_REL, "Copy Relative Path\tAlt+Shift+Ctrl+C")
+
+        if platform.system() == 'Windows':
+            menu.Append(self.ID_COPY_PATH_POSIX, 'Copy Path with forward slashes (/)')
+            menu.Append(self.ID_COPY_PATH_REL_POSIX, 'Copy Relative Path with forward slashes (/)')
+
         self.PopupMenu(menu)
         menu.Destroy()
 
@@ -812,6 +823,11 @@ class DirPanel(wx.Panel):
         menu.AppendSeparator()
         menu.Append(self.ID_COPY_PATH, "Copy Path\tAlt+Ctrl+C")
         menu.Append(self.ID_COPY_PATH_REL, "Copy Relative Path\tAlt+Shift+Ctrl+C")
+
+        if platform.system() == 'Windows':
+            menu.Append(self.ID_COPY_PATH_POSIX, 'Copy Path with forward slashes (/)')
+            menu.Append(self.ID_COPY_PATH_REL_POSIX, 'Copy Relative Path with forward slashes (/)')
+
         menu.AppendSeparator()
         menu.Append(self.ID_RENAME, "Rename\tReturn")
         menu.Append(wx.ID_DELETE, "Delete\tCtrl+Delete")
@@ -850,8 +866,11 @@ class DirPanel(wx.Panel):
             self.delete(items)
         elif evtId == wx.ID_CLEAR:
             self.tree.DeleteAllItems()
-        elif evtId in (self.ID_COPY_PATH, self.ID_COPY_PATH_REL):
-            self.copy_path(items, relative=self.ID_COPY_PATH_REL==evtId)
+        elif evtId in (self.ID_COPY_PATH, self.ID_COPY_PATH_REL,
+                       self.ID_COPY_PATH_POSIX, self.ID_COPY_PATH_REL_POSIX):
+            self.copy_path(items,
+                           relative=evtId in [self.ID_COPY_PATH_REL, self.ID_COPY_PATH_REL_POSIX],
+                           posix=evtId in [self.ID_COPY_PATH_POSIX, self.ID_COPY_PATH_REL_POSIX])
         elif evtId == self.ID_RENAME:
             if items:
                 # only edit the first item
@@ -912,12 +931,14 @@ class DirPanel(wx.Panel):
             item, cookie = self.dirtree.GetNextChild(root_item, cookie)
 
 
-    def copy_path(self, items, relative=False):
+    def copy_path(self, items, relative=False, posix=False):
         file_path = []
         for item in items:
             path = self.get_file_path(item)
             if relative:
                 path = os.path.relpath(path, os.getcwd())
+            if posix:
+                path = pathlib.PureWindowsPath(path).as_posix()
             file_path.append(path)
 
         clipData = wx.TextDataObject()
