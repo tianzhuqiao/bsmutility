@@ -572,7 +572,14 @@ class DirPanel(wx.Panel):
 
         self.Bind(wx.EVT_TEXT, self.OnDoSearch, self.search)
         self.Bind(wx.EVT_CONTEXT_MENU, self.OnRightClick, self.dirtree)
-        self.Bind(wx.EVT_TREE_ITEM_MENU, self.OnRightClickItem, self.dirtree)
+
+        if platform.system() == 'Windows':
+            # on windows, EVT_TREE_ITEM_RIGHT_CLICK will trigger the EVT_CONTEXT_MENU
+            # event, while on mac/linux, EVT_TREE_ITEM_MENU will trigger
+            # EVT_CONTEXT_MENU
+            self.Bind(wx.EVT_TREE_ITEM_MENU, self.OnRightClickItem, self.dirtree)
+        else:
+            self.Bind(wx.EVT_TREE_ITEM_RIGHT_CLICK, self.OnRightClickItem, self.dirtree)
         self.Bind(wx.EVT_TREE_END_LABEL_EDIT, self.OnRename, self.dirtree)
 
         self.Bind(wx.EVT_MENU, self.OnProcessEvent, id=wx.ID_OPEN)
