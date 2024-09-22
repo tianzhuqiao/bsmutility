@@ -1735,7 +1735,11 @@ class FileViewBase(Interface):
 
     @classmethod
     def check_filename(cls, filename):
-        raise NotImplementedError
+        if filename is None:
+            return True
+        if isinstance(filename, str) and os.path.isfile(filename):
+            return True
+        raise False
 
     @classmethod
     def open(cls,
@@ -1750,9 +1754,6 @@ class FileViewBase(Interface):
 
         If the file has already been opened, return its handler; otherwise, create it.
         """
-        if filename is not None and not os.path.isfile(filename):
-            return None
-
         if not cls.check_filename(filename):
             return None
 
