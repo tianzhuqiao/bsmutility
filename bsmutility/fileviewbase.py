@@ -531,8 +531,12 @@ class TreeCtrlBase(FastLoadTreeCtrl):
         menu = wx.Menu()
         menu.Append(self.ID_EXPORT, "Export to shell")
         menu.AppendSeparator()
-        menu.Append(self.ID_PLOT, "Plot")
-        menu.AppendSeparator()
+
+        value = self.GetItemData(item)
+        if is_numeric_dtype(value):
+            menu.Append(self.ID_PLOT, "Plot")
+            menu.AppendSeparator()
+
         menu.Append(self.ID_DELETE, "Delete")
         menu.AppendSeparator()
         menu.Append(self.ID_COPY_NAME, "Copy name")
@@ -1739,7 +1743,7 @@ class FileViewBase(Interface):
             return True
         if isinstance(filename, str) and os.path.isfile(filename):
             return True
-        raise False
+        return False
 
     @classmethod
     def open(cls,
