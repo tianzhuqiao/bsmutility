@@ -979,14 +979,19 @@ class TreeCtrlBase(FastLoadTreeCtrl):
         if filename:
             _, filename = os.path.split(self.filename)
             self.config_file = ConfigFile(f'{filename}.swp')
+
+            # load the x_path before converted_item, as the converted_item may
+            # change the x_path
+            x_path = self.config_file.GetConfig(self.XAXIS, 'path')
+
             converted_item = self.config_file.GetConfig('conversion', 'converted_item')
             if converted_item is not None and not wx.GetKeyState(wx.WXK_SHIFT):
                 for p, c in converted_item.items():
                     idx, settings = c
                     self.AddConvert(p, idx, settings)
-            # load the x_path after converted_item, as the converted_item may
+            # reload the x_path after converted_item, as the converted_item may
             # change the x_path
-            self.x_path = self.config_file.GetConfig(self.XAXIS, 'path')
+            self.SetXaxisPath(x_path)
 
         self.Fill(self.pattern)
 
@@ -1379,9 +1384,9 @@ class TreeCtrlNoTimeStamp(TreeCtrlBase):
     def GetItemMenu(self, item):
         if not item.IsOk():
             return None
-        if self.ItemHasChildren(item):
-            return None
         menu = super().GetItemMenu(item)
+        if self.ItemHasChildren(item):
+            return menu
         if menu is None:
             return None
         selections = self.GetSelections()
@@ -1499,8 +1504,8 @@ class PanelBase(wx.Panel):
         if add_to_history:
             dp.send('frame.add_file_history', filename=filename)
         title = self.GetCaption()
-        dp.send('frame.set_panel_title', pane=self, title=title, tooltip=filename,
-                name=filename)
+        dp.send('frame.set_panel_title', pane=self, title=title, tooltip=str(filename),
+                name=str(filename))
 
     def Destroy(self):
         """
@@ -1540,8 +1545,8 @@ class PanelBase(wx.Panel):
                 filename = dlg.GetPath()
                 self.Load(filename=filename)
                 title = self.GetCaption()
-                dp.send('frame.set_panel_title', pane=self, title=title, tooltip=filename,
-                        name=filename)
+                dp.send('frame.set_panel_title', pane=self, title=title,
+                        tooltip=str(filename), name=str(filename))
             dlg.Destroy()
         elif eid == self.ID_REFRESH:
             if self.filename:
@@ -1773,7 +1778,6 @@ class FileViewBase(Interface):
                         {'id':cls.ID_PANE_COPY_PATH_POSIX, 'label':'Copy Path with forward slashes (/)'},
                         {'id':cls.ID_PANE_COPY_PATH_REL_POSIX, 'label':'Copy Relative Path with forward slashes (/)'}
                         ]
-
             dp.send(signal="frame.add_panel",
                     panel=manager,
                     title=title,
@@ -1791,8 +1795,8 @@ class FileViewBase(Interface):
                                {'id': cls.ID_PANE_SHOW_IN_FINDER, 'label':f'Reveal in  {get_file_finder_name()}'},
                                {'id': cls.ID_PANE_SHOW_IN_BROWSING, 'label':'Reveal in Browsing panel'},
                                ]},
-                           tooltip=filename or "",
-                           name=filename or "")
+                           tooltip=str(filename) or "",
+                           name=str(filename) or "")
         # activate the manager
         if manager:
             if activate:

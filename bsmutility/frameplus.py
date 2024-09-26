@@ -338,7 +338,7 @@ class FramePlus(wx.Frame):
     def SetPanelTitle(self, pane, title, tooltip=None, name=None):
         """set the panel title"""
         if pane:
-            self._mgr.SetPaneTitle(pane, title=title, tooltip=tooltip)
+            self._mgr.SetPaneTitle(pane, title=str(title), tooltip=str(tooltip))
             if name is not None:
                 info = self._mgr.GetPane(pane)
                 if info and info.IsOk():
@@ -656,8 +656,8 @@ class FramePlus(wx.Frame):
                           .Dockable().MinimizeButton(True).MaximizeButton(True)\
                           .Row(-1).Position(99)
 
-        auipaneinfo.Caption(title).DestroyOnClose(not showhidemenu).Icon(icon)\
-                   .Direction(direction).Tooltip(tooltip)
+        auipaneinfo.Caption(str(title)).DestroyOnClose(not showhidemenu).Icon(icon)\
+                   .Direction(direction).Tooltip(str(tooltip))
 
         if not self._mgr.GetAllPanes():
             # set the first pane to be center pane
