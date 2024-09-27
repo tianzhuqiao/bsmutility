@@ -418,7 +418,7 @@ class TreeCtrlBase(FastLoadTreeCtrl):
                 send_data_to_shell(output_name, output)
         elif cmd == self.ID_DELETE:
             name = self.GetItemText(item)
-            msg = f"Do you want to delete '{name}'?"
+            msg = f'Do you want to delete "{name}"?'
             parent = self.GetTopLevelParent()
             dlg = wx.MessageDialog(self, msg, parent.GetLabel(), wx.YES_NO)
             if dlg.ShowModal() != wx.ID_YES:
@@ -541,6 +541,11 @@ class TreeCtrlBase(FastLoadTreeCtrl):
         menu.AppendSeparator()
         menu.Append(self.ID_COPY_NAME, "Copy name")
         menu.Append(self.ID_COPY_PATH, "Copy path")
+
+        if not is_numeric_dtype(value):
+            return menu
+
+        # numeric (leaf) node specific menu item
         menu.AppendSeparator()
         menu.Append(self.ID_CONVERT, "Convert to ...")
         for c in self.common_convert:
@@ -789,7 +794,7 @@ class TreeCtrlBase(FastLoadTreeCtrl):
         if self.ItemHasChildren(item):
             if confirm:
                 text = self.GetItemText(item)
-                msg = f"Do you want to plot all signals under '{text}'?"
+                msg = f'Do you want to plot all signals under "{text}"?'
                 parent = self.GetTopLevelParent()
                 dlg = wx.MessageDialog(self, msg, parent.GetLabel(), wx.YES_NO)
                 if dlg.ShowModal() != wx.ID_YES:
@@ -1414,24 +1419,30 @@ class TreeCtrlNoTimeStamp(TreeCtrlBase):
         name = self.GetItemText(item)
         data = [[name, y]]
         selections = self.GetSelections()
-        for sel in selections:
-            if self.ItemHasChildren(sel) or sel == item:
-                continue
-            y = self.GetItemData(sel)
-            name = self.GetItemText(sel)
-            data.append([name, y])
-        data_size = [len(d[1]) for d in data]
-        data_1d = [len(d[1].shape) <= 1 or sorted(d[1].shape)[-2] == 1  for d in data]
-        if all(data_1d) and all(d == data_size[0] for d in data_size):
-            # if all data has same size, convert it to DataFrame
-            df = pd.DataFrame()
-            for name, val in data:
-                if isinstance(val, np.ndarray):
-                    val = val.flatten()
-                df[name] = val
-            data = df
-        elif len(data) == 1:
-            data = data[0][1]
+        if self.ItemHasChildren(item):
+            data = y
+            if isinstance(y, MutableMapping):
+                if np.all([not isinstance(d, MutableMapping) for d in y]):
+                    data = pd.DataFrame(data)
+        else:
+            for sel in selections:
+                if self.ItemHasChildren(sel) or sel == item:
+                    continue
+                y = self.GetItemData(sel)
+                name = self.GetItemText(sel)
+                data.append([name, y])
+            data_size = [len(d[1]) for d in data]
+            data_1d = [len(d[1].shape) <= 1 or sorted(d[1].shape)[-2] == 1  for d in data]
+            if all(data_1d) and all(d == data_size[0] for d in data_size):
+                # if all data has same size, convert it to DataFrame
+                df = pd.DataFrame()
+                for name, val in data:
+                    if isinstance(val, np.ndarray):
+                        val = val.flatten()
+                    df[name] = val
+                data = df
+            elif len(data) == 1:
+                data = data[0][1]
 
         if len(selections) <= 1:
             output_name = get_variable_name(path)
@@ -1843,7 +1854,8 @@ class FileViewBase(Interface):
         if isinstance(pane, cls.panel_type):
             if pane.GetConfirmClose():
                 msg = f'Do you want to close "{event.GetPane().caption}"?'
-                dlg = wx.MessageDialog(pane.GetTopLevelParent(), msg, event.GetPane().caption, wx.YES_NO)
+                parent = pane.GetTopLevelParent()
+                dlg = wx.MessageDialog(pane, msg, parent.GetLabel(), wx.YES_NO)
                 result = dlg.ShowModal() == wx.ID_YES
                 dlg.Destroy()
                 if not result:
