@@ -1,5 +1,7 @@
 """define some utility functions"""
 import os
+import sys
+import traceback
 import subprocess
 import platform
 import keyword
@@ -329,3 +331,15 @@ def get_path_list(path=None, prefix='', files=True, folders=True):
         paths += sorted(f, key=str.casefold)
 
     return paths
+
+def create_shortcut(name, icns, ico, svg):
+    try:
+        import pyshortcuts
+        if platform.system() == 'Darwin': # macOS
+            pyshortcuts.make_shortcut(script=name, name=name, icon=icns, noexe=True)
+        elif platform.system() == 'Windows':
+            pyshortcuts.make_shortcut("_ -m bsmplot", name=name, icon=ico)
+        else:
+            pyshortcuts.make_shortcut(script=name, name=name, icon=svg, noexe=True)
+    except:
+        traceback.print_exc(file=sys.stdout)
