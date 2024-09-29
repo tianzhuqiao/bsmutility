@@ -78,13 +78,13 @@ class DirTreeCtrl(wx.TreeCtrl):
         self.iconentries['directory'] = -1
         self.iconentries['directoryopen'] = -1
         scale = self.GetContentScaleFactor()
-        bmp = wx.ArtProvider.GetBitmap(wx.ART_FOLDER, wx.ART_OTHER, (16*scale, 16*scale))
+        bmp = wx.ArtProvider.GetBitmap(wx.ART_FOLDER, wx.ART_OTHER, (int(16*scale), int(16*scale)))
         bmp.SetScaleFactor(scale)
         self.addBitmap(bmp, 'directory')
-        bmp = wx.ArtProvider.GetBitmap(wx.ART_FOLDER_OPEN, wx.ART_OTHER, (16*scale, 16*scale))
+        bmp = wx.ArtProvider.GetBitmap(wx.ART_FOLDER_OPEN, wx.ART_OTHER, (int(16*scale), int(16*scale)))
         bmp.SetScaleFactor(scale)
         self.addBitmap(bmp, 'directoryopen')
-        bmp = wx.ArtProvider.GetBitmap(wx.ART_NORMAL_FILE, wx.ART_OTHER, (16*scale, 16*scale))
+        bmp = wx.ArtProvider.GetBitmap(wx.ART_NORMAL_FILE, wx.ART_OTHER, (int(16*scale), int(16*scale)))
         bmp.SetScaleFactor(scale)
         self.addBitmap(bmp, 'default')
         self.SetImageList(self.imagelist)
@@ -241,7 +241,19 @@ class DirTreeCtrl(wx.TreeCtrl):
 
                         if info is not None:
                             icon = info[0]
-                            if icon.Ok():
+                            if not icon.IsOk():
+                                icon = wx.Icon()
+                                icon.LoadFile(info[1], type=wx.BITMAP_TYPE_ICON)
+                                bitmap = wx.Bitmap()
+                                bitmap.CopyFromIcon(icon)
+                                image = bitmap.ConvertToImage()
+                                scale = self.GetContentScaleFactor()
+                                image = image.Scale(int(16*scale), int(16*scale), wx.IMAGE_QUALITY_HIGH)
+                                bitmap = image.ConvertToBitmap()
+                                bitmap.SetScaleFactor(scale)
+                                icon.CopyFromBitmap(bitmap)
+
+                            if icon.IsOk():
                                 # add to imagelist and store returned key
                                 iconkey = self.imagelist.Add(icon)
                                 self.iconentries[ext] = iconkey
