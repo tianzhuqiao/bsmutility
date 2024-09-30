@@ -77,7 +77,10 @@ class DirTreeCtrl(wx.TreeCtrl):
         self.iconentries['default'] = -1
         self.iconentries['directory'] = -1
         self.iconentries['directoryopen'] = -1
-        scale = self.GetContentScaleFactor()
+        scale = 1
+        if not wx.Platform == '__WXMSW__':
+            # looks like Windows doesn't support high DPI image (wx 4.2.2)
+            scale = self.GetDPIScaleFactor()
         bmp = wx.ArtProvider.GetBitmap(wx.ART_FOLDER, wx.ART_OTHER, (int(16*scale), int(16*scale)))
         bmp.SetScaleFactor(scale)
         self.addBitmap(bmp, 'directory')
@@ -244,18 +247,19 @@ class DirTreeCtrl(wx.TreeCtrl):
                             if not icon.IsOk():
                                 icon = wx.Icon()
                                 icon.LoadFile(info[1], type=wx.BITMAP_TYPE_ICON)
+                            if icon.IsOk():
                                 bitmap = wx.Bitmap()
                                 bitmap.CopyFromIcon(icon)
                                 image = bitmap.ConvertToImage()
-                                scale = self.GetContentScaleFactor()
+                                scale = 1
+                                if not wx.Platform == '__WXMSW__':
+                                    scale = self.GetDPIScaleFactor()
                                 image = image.Scale(int(16*scale), int(16*scale), wx.IMAGE_QUALITY_HIGH)
                                 bitmap = image.ConvertToBitmap()
                                 bitmap.SetScaleFactor(scale)
-                                icon.CopyFromBitmap(bitmap)
 
-                            if icon.IsOk():
                                 # add to imagelist and store returned key
-                                iconkey = self.imagelist.Add(icon)
+                                iconkey = self.imagelist.Add(bitmap)
                                 self.iconentries[ext] = iconkey
                                 # update tree with new imagelist - inefficient
                                 self.SetImageList(self.imagelist)
