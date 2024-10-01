@@ -557,7 +557,7 @@ class TreeCtrlBase(FastLoadTreeCtrl):
         menu_customize.Append(self.ID_CONVERT_CUSTOM, "Add")
         menu_customize.Append(self.ID_CONVERT_MANAGE, "Manage")
         menu_customize.AppendSeparator()
-        for c in self.GetCustomizedConvert():
+        for c in reversed(self.GetCustomizedConvert()):
             if c['label'] not in self.IDS_CONVERT:
                 self.IDS_CONVERT[c['label']] = wx.NewIdRef()
             menu_customize.Append(self.IDS_CONVERT[c['label']], c['label'])
@@ -771,10 +771,10 @@ class TreeCtrlBase(FastLoadTreeCtrl):
 
     def ManageCustomizedConvert(self):
         converts = self.GetCustomizedConvert()
-        dlg = ConvertManagingDlg(self, converts, labels=self._convert_labels, size=(800, 600))
+        dlg = ConvertManagingDlg(self, reversed(converts), labels=self._convert_labels, size=(800, 600))
         if dlg.ShowModal() == wx.ID_OK:
             settings = dlg.GetSettings()
-            self.customized_convert = settings
+            self.customized_convert = list(reversed(settings))
             self.SetConfig(convert=self.customized_convert)
 
     def GetCustomizedConvert(self):
