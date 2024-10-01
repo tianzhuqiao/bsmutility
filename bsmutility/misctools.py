@@ -14,7 +14,7 @@ import wx.svg
 import aui2 as aui
 from .dirtreectrl import DirTreeCtrl, Directory
 from .bsmxpm import backward_svg2, backward_gray_svg2, forward_svg2, \
-                    forward_gray_svg2, up_svg, home_svg2, more_svg
+                    forward_gray_svg2, up_svg, home_svg2, more_svg, refresh_svg
 from .autocomplete import AutocompleteTextCtrl
 from .utility import FastLoadTreeCtrl, svg_to_bitmap, open_file_with_default_app, \
                      show_file_in_finder, get_file_finder_name, get_path_list
@@ -517,6 +517,9 @@ class DirPanel(wx.Panel):
         self.tb.AddSeparator()
         self.tb.AddSimpleTool(self.ID_GOTO_HOME, 'Home',
                               svg_to_bitmap(home_svg2, win=self), 'Current folder')
+        self.tb.AddSeparator()
+        self.tb.AddSimpleTool(wx.ID_REFRESH, 'Refresh',
+                              svg_to_bitmap(refresh_svg, win=self), 'Refresh the current folder')
 
         self.address = AutocompleteComboBox(self.tb, completer=self.completer)
         item = self.tb.AddControl(self.address)
@@ -530,7 +533,7 @@ class DirPanel(wx.Panel):
         self.Bind(wx.EVT_MENU, self.OnProcessMenu, id=self.ID_SHOW_HIDDEN)
         self.Bind(wx.EVT_MENU, self.OnProcessMenu, id=self.ID_SHOW_PATTERN_TOOLBAR)
 
-        self.Bind(wx.EVT_TEXT_ENTER, self.OnGoToAddress, self.address)
+        self.Bind(wx.EVT_TEXT_ENTER, self.OnGoToNewAddress, self.address)
         self.Bind(wx.EVT_COMBOBOX, self.OnGoToAddress, self.address)
 
         self.tb.Realize()
@@ -566,9 +569,10 @@ class DirPanel(wx.Panel):
         self.Bind(wx.EVT_TOOL, self.OnGotoParent, id=self.ID_GOTO_PARENT)
         self.Bind(wx.EVT_TOOL, self.OnForward, id=wx.ID_FORWARD)
         self.Bind(wx.EVT_TOOL, self.OnBack, id=wx.ID_BACKWARD)
+        self.Bind(wx.EVT_TOOL, self.OnRefresh, id=wx.ID_REFRESH)
 
-        self.Bind(wx.EVT_TREE_ITEM_ACTIVATED, self.OnItemActivated,
-                  self.dirtree)
+        self.Bind(wx.EVT_TREE_ITEM_ACTIVATED, self.OnItemActivated, self.dirtree)
+        self.Bind(wx.EVT_TREE_ITEM_RIGHT_CLICK, self.OnItemRightClick, self.dirtree)
 
         self.Bind(wx.EVT_TEXT, self.OnDoSearch, self.search)
         self.Bind(wx.EVT_CONTEXT_MENU, self.OnRightClick, self.dirtree)
@@ -599,6 +603,17 @@ class DirPanel(wx.Panel):
         dp.connect(receiver=self.GoTo, signal='dirpanel.goto')
         self.active_items = []
 
+        accel = [
+            #(wx.ACCEL_CTRL, wx.WXK_RETURN, wx.ID_OPEN),
+            (wx.ACCEL_ALT | wx.ACCEL_CTRL, ord('R'), self.ID_OPEN_IN_FINDER),
+            (wx.ACCEL_CTRL, ord('C'), wx.ID_COPY),
+            (wx.ACCEL_ALT | wx.ACCEL_CTRL, ord('C'), self.ID_COPY_PATH),
+            (wx.ACCEL_ALT | wx.ACCEL_SHIFT | wx.ACCEL_CTRL, ord('C'), self.ID_COPY_PATH_REL),
+            (wx.ACCEL_NORMAL, wx.WXK_RETURN, self.ID_RENAME),
+            (wx.ACCEL_NORMAL, wx.WXK_DELETE, wx.ID_DELETE),
+        ]
+        self.accel = wx.AcceleratorTable(accel)
+        self.dirtree.SetAcceleratorTable(self.accel)
     def completer(self, query):
 
         path, prefix = os.path.split(query)
@@ -741,23 +756,46 @@ class DirPanel(wx.Panel):
         currentItem = event.GetItem()
         self.open([currentItem])
 
+    def OnItemRightClick(self, event):
+        currentItem = event.GetItem()
+        if self.dirtree.ItemHasChildren(currentItem):
+            self.open([currentItem])
+
     def doGoToAddress(self, path):
         if os.path.isdir(path):
             self.SetRootDir(path)
-            while True:
-                item = self.address.FindString(path)
-                if item == wx.NOT_FOUND:
-                    break
-                self.address.Delete(item)
-            self.address.Insert(path, 0)
             wx.CallAfter(self.address.ChangeValue, path)
             wx.CallAfter(self.address.SetInsertionPointEnd)
         else:
             print(f"Invalid folder: {path}")
 
+    def OnGoToNewAddress(self, event):
+        path = self.address.GetValue()
+        self.doGoToAddress(path)
+        # add the address to the combo
+        while True:
+            # delete the path if it is in the list
+            item = self.address.FindString(path)
+            if item == wx.NOT_FOUND:
+                break
+            self.address.Delete(item)
+        # add the path to the beginning
+        self.address.Insert(path, 0)
+
+        while self.address.GetCount() > 30:
+            # only remember the last 30 path
+            self.address.Delete(30)
+
     def OnGoToAddress(self, event):
         path = self.address.GetValue()
         self.doGoToAddress(path)
+
+    def OnRefresh(self, event):
+        root = self.dirtree.GetRootItem()
+        if not root:
+            return
+        d = self.dirtree.GetItemData(root)
+        self.doGoToAddress(d.directory)
 
     def OnGotoHome(self, event):
         root = self.dirtree.GetRootItem()
@@ -800,12 +838,11 @@ class DirPanel(wx.Panel):
         menu.Append(wx.ID_NEW, "New Folder")
         manager = get_file_finder_name()
         menu.Append(self.ID_OPEN_IN_FINDER, f"Reveal in {manager}\tAlt+Ctrl+R")
-        menu.AppendSeparator()
-        item = menu.Append(self.ID_PASTE_FOLDER, "Paste\tCtrl+V")
-        item.Enable(False)
         if wx.TheClipboard.Open():
             data = wx.FileDataObject()
-            item.Enable(wx.TheClipboard.GetData(data))
+            if wx.TheClipboard.GetData(data):
+                menu.AppendSeparator()
+                menu.Append(self.ID_PASTE_FOLDER, "Paste\tCtrl+V")
             wx.TheClipboard.Close()
 
         menu.AppendSeparator()
@@ -822,11 +859,16 @@ class DirPanel(wx.Panel):
     def OnRightClickItem(self, event):
         self.active_items = self.dirtree.GetSelections()
         menu = wx.Menu()
-        menu.Append(wx.ID_OPEN, "Open\tRAWCTRL+Return")
+        menu.Append(wx.ID_OPEN, "Open\tCtrl+Enter")
         menu.Append(self.ID_OPEN_IN_FINDER, "Reveal in Finder\tAlt+Ctrl+R")
         menu.AppendSeparator()
-        menu.Append(wx.ID_CUT, "Cut\tCtrl+X")
+        #menu.Append(wx.ID_CUT, "Cut\tCtrl+X")
         menu.Append(wx.ID_COPY, "Copy\tCtrl+C")
+        if wx.TheClipboard.Open():
+            data = wx.FileDataObject()
+            if wx.TheClipboard.GetData(data):
+                menu.Append(self.ID_PASTE_FOLDER, "Paste\tCtrl+V")
+            wx.TheClipboard.Close()
         menu.AppendSeparator()
         menu.Append(self.ID_COPY_PATH, "Copy Path\tAlt+Ctrl+C")
         menu.Append(self.ID_COPY_PATH_REL, "Copy Relative Path\tAlt+Shift+Ctrl+C")
@@ -837,7 +879,7 @@ class DirPanel(wx.Panel):
 
         menu.AppendSeparator()
         menu.Append(self.ID_RENAME, "Rename\tReturn")
-        menu.Append(wx.ID_DELETE, "Delete\tCtrl+Delete")
+        menu.Append(wx.ID_DELETE, "Delete\tDelete")
         self.PopupMenu(menu)
         menu.Destroy()
 
@@ -857,6 +899,8 @@ class DirPanel(wx.Panel):
 
     def OnProcessEvent(self, event):
         evtId = event.GetId()
+        if not self.active_items:
+            self.active_items = self.dirtree.GetSelections()
         self.do_process(evtId, self.active_items)
         self.active_items = []
 
@@ -888,13 +932,17 @@ class DirPanel(wx.Panel):
             if wx.TheClipboard.Open():
                 data = wx.FileDataObject()
                 files_copied = []
-                root_item = self.dirtree.GetRootItem()
-                if wx.TheClipboard.GetData(data):
-                    root_dir = self.get_file_path(root_item)
-                    for src in data.GetFilenames():
-                        des = os.path.join(root_dir, os.path.basename(src))
-                        shutil.copy2(src, des)
-                        files_copied.append(os.path.basename(src))
+                if len(items) == 1:
+                    item = items[0]
+                    if wx.TheClipboard.GetData(data):
+                        root_dir = self.get_file_path(item)
+                        for src in data.GetFilenames():
+                            des = os.path.join(root_dir, os.path.basename(src))
+                            if os.path.abspath(des) == os.path.abspath(src):
+                                # same location, ignore it
+                                continue
+                            shutil.copy2(src, des)
+                            files_copied.append(os.path.basename(src))
                 wx.TheClipboard.Close()
                 if files_copied:
                     self.doGoToAddress(root_dir)
@@ -974,11 +1022,12 @@ class DirPanel(wx.Panel):
         elif self.history_index - 1 >= 0 and root_dir == self.history[self.history_index-1]:
             self.history_index -= 1
         else:
-            if root_dir in self.history:
-                self.history_index = self.history.index(root_dir)
-            else:
-                self.history.append(root_dir)
-                self.history_index = len(self.history)-1
+            if 0 <= self.history_index < len(self.history):
+                # remove the history after current point
+                self.history = self.history[:self.history_index+1]
+
+            self.history.append(root_dir)
+            self.history_index = len(self.history)-1
 
     def OnShowHidden(self, event):
         self.SetRootDir()
