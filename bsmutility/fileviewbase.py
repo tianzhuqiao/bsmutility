@@ -644,30 +644,34 @@ class TreeCtrlBase(FastLoadTreeCtrl):
             return None, settings
 
         # add the converted data to parent DataFrame (same level as item)
-        dataset = self.GetItemData(parent)
-        outputs = [n.strip() for n in outputs.split(',')]
-        if len(outputs) == 1:
-            dataset[outputs[0]] = d
-        else:
-            for i, n in enumerate(outputs):
-                dataset[n] = d[i]
-        self.RefreshChildren(parent)
         path = self.GetItemPath(parent)
+        outputs = [n.strip() for n in outputs.split(',')]
+
+        if len(outputs) == 1:
+            d = [d]
+
         new_item = []
-        for n in outputs:
-            tmp = self.FindItemFromPath(path+[n])
-            if tmp is not None:
-                new_item.append(tmp)
-        if len(new_item) > 0 and new_item[0].IsOk():
-            self.UnselectAll()
-            self.EnsureVisible(new_item[0])
-            self.SelectItem(new_item[0])
-            self.SetFocusedItem(new_item[0])
+        for i, n in enumerate(outputs):
+            if n == '_':
+                # ignore place holder
+                continue
+            # full name
+            name = get_tree_item_name(path + [outputs[i]])
+            self.SetData(name, d[i])
+            new_item.append([name, i])
+
+        self.RefreshChildren(parent)
+        if len(new_item[0]) > 0:
+            sel_item = self.FindItemFromPath(get_tree_item_path(new_item[0][0]))
+            if sel_item is not None and sel_item.IsOk():
+                self.UnselectAll()
+                self.EnsureVisible(sel_item)
+                self.SelectItem(sel_item)
+                self.SetFocusedItem(sel_item)
 
         # save the converted item
-        for idx in range(0, len(new_item)):
-            name = self.GetItemName(new_item[idx])
-            self._converted_item[name] = [(len(new_item), idx), settings]
+        for name, idx in new_item:
+            self._converted_item[name] = [(len(outputs), idx), settings]
         if self.config_file:
             self.config_file.SetConfig('conversion', converted_item=self._converted_item)
 
@@ -1048,13 +1052,19 @@ class TreeCtrlBase(FastLoadTreeCtrl):
         item = self.GetRootItem()
         if not item.IsOk():
             return None
-        for p in path:
+        for i in range(len(path)):
+            p = path[i]
             child, cookie = self.GetFirstChild(item)
             while child.IsOk():
                 name = self.GetItemText(child)
                 if name == p:
                     item = child
                     break
+                if not self.ItemHasChildren(child) and get_tree_item_name(path[i:]) == name:
+                    # the name in node DataFrame is not parsed, so try the
+                    # combined name, e.g., if the column name is a[5],
+                    # get_tree_item_path will return ['a', '[5]']
+                    return child
                 child, cookie = self.GetNextChild(item, cookie)
             else:
                 return None
@@ -1087,7 +1097,7 @@ class TreeCtrlBase(FastLoadTreeCtrl):
                     signal = f'{start}.{signal}'
                 d = self.GetData(signal)
                 if d is None:
-                    print(f'Invalid input "{item}({signal})"!')
+                    print(f'Invalid input "{item} ({signal})"!')
                     return None, settings
                 if len(df) > 0 and len(d) != len(df):
                     print(f'Input "{item}({signal})" has different length with others!')
