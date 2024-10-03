@@ -110,11 +110,21 @@ class AutocompleteTextCtrl(wx.TextCtrl):
         wx.TextCtrl.__init__(self, parent, value=value, style=style)
         self.height = height
         self.frequency = frequency
+        self.completer = None
         if completer:
             self.SetCompleter(completer)
         self.queued_popup = False
         self.skip_event = False
         self._string = value
+
+    def Destroy(self):
+        if self.completer is not None:
+            frame = self.GetParent()
+            while frame and (not isinstance(frame, wx.Frame)) and\
+                  (not isinstance(frame, wx.Dialog)):
+                frame = frame.GetParent()
+            frame.Unbind(wx.EVT_MOVE)
+        return super().Destroy()
 
     def SetCompleter(self, completer):
         """
@@ -259,6 +269,15 @@ class AutocompleteComboBox(wx.ComboBox):
         self.queued_popup = False
         self.skip_event = False
         self._string = value
+
+    def Destroy(self):
+        if self.completer is not None:
+            frame = self.GetParent()
+            while frame and (not isinstance(frame, wx.Frame)) and\
+                  (not isinstance(frame, wx.Dialog)):
+                frame = frame.GetParent()
+            frame.Unbind(wx.EVT_MOVE)
+        return super().Destroy()
 
     def SetCompleter(self, completer):
         """
