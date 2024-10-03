@@ -31,6 +31,11 @@ class PropAutoCompleteEditBox(PropControl):
 
         return win
 
+    def AllowKeyNavigation(self):
+        if self.window is not None and self.window.IsShown():
+            return False
+        return super().AllowKeyNavigation()
+
     def OnPropTextEnter(self, evt):
         """send when the enter key is pressed in the property control window"""
         if self.window:
