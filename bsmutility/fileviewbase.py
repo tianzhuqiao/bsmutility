@@ -555,7 +555,9 @@ class TreeCtrlBase(FastLoadTreeCtrl):
 
         menu_customize = wx.Menu()
         menu_customize.Append(self.ID_CONVERT_CUSTOM, "Add")
-        menu_customize.Append(self.ID_CONVERT_MANAGE, "Manage")
+        converts = self.GetCustomizedConvert()
+        if len(converts) > 0:
+            menu_customize.Append(self.ID_CONVERT_MANAGE, "Manage")
         menu_customize.AppendSeparator()
         for c in reversed(self.GetCustomizedConvert()):
             if c['label'] not in self.IDS_CONVERT:
@@ -1646,7 +1648,9 @@ class PanelNotebookBase(PanelBase):
             mitem.Check(self.GetConfirmClose())
             menu.AppendSeparator()
             menu.Append(self.ID_CONVERT_CUSTOM, "Add custom convert")
-            menu.Append(self.ID_CONVERT_MANAGE, "Manage custom convert")
+            converts = self.tree.GetCustomizedConvert()
+            if len(converts) > 0:
+                menu.Append(self.ID_CONVERT_MANAGE, "Manage custom convert")
         return menu
 
     def SetConfirmClose(self, confirm):
