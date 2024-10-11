@@ -38,6 +38,7 @@ class FindListCtrl(wx.ListCtrl):
 
         self.index_column = 0
         self.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self.OnRightClick)
+        self.Bind(wx.EVT_TOOL, self.OnBtnSelectAll, id=wx.ID_SELECTALL)
         self.Bind(wx.EVT_TOOL, self.OnBtnCopy, id=wx.ID_COPY)
         self.Bind(wx.EVT_TOOL, self.OnBtnCopy, id=self.ID_COPY_NO_INDEX)
         self.Bind(wx.EVT_TOOL, self.OnBtnCopy, id=self.ID_COPY_SEL_COLS)
@@ -47,6 +48,7 @@ class FindListCtrl(wx.ListCtrl):
             (wx.ACCEL_SHIFT, wx.WXK_F3, self.ID_FIND_PREV),
             (wx.ACCEL_CTRL, ord('H'), self.ID_FIND_REPLACE),
             (wx.ACCEL_RAW_CTRL, ord('H'), self.ID_FIND_REPLACE),
+            (wx.ACCEL_CTRL, ord('A'), wx.ID_SELECTALL),
             (wx.ACCEL_CTRL, ord('C'), wx.ID_COPY),
             (wx.ACCEL_CTRL | wx.ACCEL_SHIFT, ord('C'), self.ID_COPY_NO_INDEX),
         ]
@@ -58,17 +60,24 @@ class FindListCtrl(wx.ListCtrl):
 
     def OnRightClick(self, event):
 
-        if self.GetSelectedItemCount() <= 0:
+        if self.GetItemCount() <= 0:
             return
 
         menu = wx.Menu()
-        menu.Append(wx.ID_COPY, "&Copy \tCtrl+C")
-        if 0 <= self.index_column < self.GetColumnCount():
-            menu.Append(self.ID_COPY_NO_INDEX, "C&opy without index \tCtrl+Shift+C")
-        if self.GetColumnCount() > 1:
-            menu.Append(self.ID_COPY_SEL_COLS, "Copy &selected columns")
+        menu.Append(wx.ID_SELECTALL, "&Select all\tCtrl+A")
+        if self.GetSelectedItemCount() > 0:
+            menu.AppendSeparator()
+            menu.Append(wx.ID_COPY, "&Copy \tCtrl+C")
+            if 0 <= self.index_column < self.GetColumnCount():
+                menu.Append(self.ID_COPY_NO_INDEX, "C&opy without index \tCtrl+Shift+C")
+            if self.GetColumnCount() > 1:
+                menu.Append(self.ID_COPY_SEL_COLS, "Copy &selected columns")
 
         self.PopupMenu(menu)
+
+    def OnBtnSelectAll(self, event):
+        for i in range(self.GetItemCount()):
+            self.Select(i)
 
     def OnBtnCopy(self, event):
         cmd = event.GetId()
