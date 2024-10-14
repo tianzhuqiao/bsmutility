@@ -303,12 +303,20 @@ class _dict(dict):
     def copy(self):
         return _dict(dict(self).copy())
 
-def get_path_list(path=None, prefix='', files=True, folders=True):
+def escape_path(path):
+    return path.replace(' ', r'\ ')
+
+def unescape_path(path):
+    return path.replace(r'\ ', ' ')
+
+def get_path_list(path=None, prefix='', files=True, folders=True, folder_suffix='/'):
     paths = []
     if path is None:
         path = os.getcwd()
+    path = os.path.expandvars(os.path.expanduser(path))
     def _getPathList(pattern):
         # get folders or files
+        pattern = unescape_path(pattern)
         f = glob.glob(pattern)
         # remove common "path"
         f = [os.path.relpath(folder, path) for folder in f]
@@ -316,15 +324,16 @@ def get_path_list(path=None, prefix='', files=True, folders=True):
         f = [folder for folder in f if folder.lower().startswith(prefix.lower())]
         # replace ' ' with '\ ' or put the path in quotes to indicate it is a
         # space in path not in command
-        if wx.Platform == '__WXMSW__':
-            f = [ f'"{p}"' if ' ' in p else p for p in f]
-        else:
-            f = [p.replace(' ', r'\ ') for p in f]
+        #if wx.Platform == '__WXMSW__':
+        #    f = [ f'"{p}"' if ' ' in p else p for p in f]
+        #else:
+        f = [escape_path(p) for p in f]
         return f
 
     if folders:
         f = _getPathList(os.path.join(path, '*/'))
-        f = [folder + '/' for folder in f]
+        if isinstance(folder_suffix, str):
+            f = [folder + folder_suffix for folder in f]
         paths += sorted(f, key=str.casefold)
     if files:
         f = _getPathList(os.path.join(path, '*.*'))

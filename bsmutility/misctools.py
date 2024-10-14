@@ -17,10 +17,11 @@ from .bsmxpm import backward_svg2, backward_gray_svg2, forward_svg2, \
                     forward_gray_svg2, up_svg, home_svg2, more_svg, refresh_svg
 from .autocomplete import AutocompleteTextCtrl
 from .utility import FastLoadTreeCtrl, svg_to_bitmap, open_file_with_default_app, \
-                     show_file_in_finder, get_file_finder_name, get_path_list
+                     show_file_in_finder, get_file_finder_name, get_path_list, \
+                     unescape_path
 from .editor_base import EditorBase
 from .bsminterface import Interface
-from .autocomplete import AutocompleteComboBox
+from .auipathbar import AuiPathBar, EVT_AUIPATHBAR_CLICK
 
 class HelpText(EditorBase):
 
@@ -521,22 +522,20 @@ class DirPanel(wx.Panel):
         self.tb.AddSimpleTool(wx.ID_REFRESH, 'Refresh',
                               svg_to_bitmap(refresh_svg, win=self), 'Refresh the current folder')
 
-        self.address = AutocompleteComboBox(self.tb, completer=self.completer)
-        item = self.tb.AddControl(self.address)
-        item.SetProportion(1)
 
         self.showHidden = True
         self.tb.AddSimpleTool(self.ID_MORE, 'More ...',
                               svg_to_bitmap(more_svg, win=self), 'More ...')
 
+        self.tb.AddSeparator()
         self.Bind(wx.EVT_TOOL, self.OnMenuDropDown, id=self.ID_MORE)
         self.Bind(wx.EVT_MENU, self.OnProcessMenu, id=self.ID_SHOW_HIDDEN)
         self.Bind(wx.EVT_MENU, self.OnProcessMenu, id=self.ID_SHOW_PATTERN_TOOLBAR)
 
-        self.Bind(wx.EVT_TEXT_ENTER, self.OnGoToNewAddress, self.address)
-        self.Bind(wx.EVT_COMBOBOX, self.OnGoToAddress, self.address)
-
         self.tb.Realize()
+
+        self.addressbar = AuiPathBar(self, agwStyle=agwStyle | aui.AUI_TB_HORZ_TEXT)
+
         self.dirtree = DirTreeCtrl(self,
                                    style=wx.TR_DEFAULT_STYLE
                                    | wx.TR_HAS_VARIABLE_ROW_HEIGHT
@@ -553,7 +552,10 @@ class DirPanel(wx.Panel):
         self.tb2.Realize()
 
         self.box = wx.BoxSizer(wx.VERTICAL)
-        self.box.Add(self.tb, 0, wx.EXPAND, 0)
+        boxtb = wx.BoxSizer(wx.HORIZONTAL)
+        boxtb.Add(self.tb, 0, wx.EXPAND, 0)
+        boxtb.Add(self.addressbar, 1, wx.EXPAND, 0)
+        self.box.Add(boxtb, 0, wx.EXPAND, 0)
         #self.box.Add(wx.StaticLine(self), 0, wx.EXPAND)
         self.box.Add(self.dirtree, 1, wx.EXPAND)
         self.box.Add(self.tb2, 0, wx.EXPAND)
@@ -572,7 +574,7 @@ class DirPanel(wx.Panel):
         self.Bind(wx.EVT_TOOL, self.OnRefresh, id=wx.ID_REFRESH)
 
         self.Bind(wx.EVT_TREE_ITEM_ACTIVATED, self.OnItemActivated, self.dirtree)
-        self.Bind(wx.EVT_TREE_ITEM_RIGHT_CLICK, self.OnItemRightClick, self.dirtree)
+        self.Bind(EVT_AUIPATHBAR_CLICK, self.OnPathBarClick, self.addressbar)
 
         self.Bind(wx.EVT_TEXT, self.OnDoSearch, self.search)
         self.Bind(wx.EVT_CONTEXT_MENU, self.OnRightClick, self.dirtree)
@@ -613,7 +615,8 @@ class DirPanel(wx.Panel):
             (wx.ACCEL_NORMAL, wx.WXK_DELETE, wx.ID_DELETE),
         ]
         self.accel = wx.AcceleratorTable(accel)
-        self.dirtree.SetAcceleratorTable(self.accel)
+        self.SetAcceleratorTable(self.accel)
+
     def completer(self, query):
 
         path, prefix = os.path.split(query)
@@ -637,7 +640,7 @@ class DirPanel(wx.Panel):
         resp = dp.send('frame.get_config', group='dirpanel', key='path_list')
         if resp and resp[0][1] is not None:
             items = resp[0][1]
-            self.address.SetItems(items)
+            self.addressbar.address.SetItems(items)
 
         resp = dp.send('frame.get_config', group='dirpanel', key='path_active')
         path = os.getcwd()
@@ -651,8 +654,8 @@ class DirPanel(wx.Panel):
         dp.send('frame.set_config', group='dirpanel', file_pattern=self.search.GetValue())
         dp.send('frame.set_config', group='dirpanel', show_pattern_toolbar=self.tb2.IsShown())
 
-        dp.send('frame.set_config', group='dirpanel', path_active=self.address.GetValue())
-        dp.send('frame.set_config', group='dirpanel', path_list=self.address.GetItems())
+        dp.send('frame.set_config', group='dirpanel', path_active=self.addressbar.GetPath())
+        dp.send('frame.set_config', group='dirpanel', path_list=self.addressbar.address.GetItems())
 
     def OnMenuDropDown(self, event):
         menu = wx.Menu()
@@ -756,39 +759,19 @@ class DirPanel(wx.Panel):
         currentItem = event.GetItem()
         self.open([currentItem])
 
-    def OnItemRightClick(self, event):
-        currentItem = event.GetItem()
-        if self.dirtree.ItemHasChildren(currentItem):
-            self.open([currentItem])
+    def OnPathBarClick(self, event):
+        path = event.GetPath()
+        self.doGoToAddress(path)
 
     def doGoToAddress(self, path):
+        path = unescape_path(path)
         if os.path.isdir(path):
             self.SetRootDir(path)
-            wx.CallAfter(self.address.ChangeValue, path)
-            wx.CallAfter(self.address.SetInsertionPointEnd)
+            self.addressbar.SetPath(path)
+            self.Layout()
+
         else:
             print(f"Invalid folder: {path}")
-
-    def OnGoToNewAddress(self, event):
-        path = self.address.GetValue()
-        self.doGoToAddress(path)
-        # add the address to the combo
-        while True:
-            # delete the path if it is in the list
-            item = self.address.FindString(path)
-            if item == wx.NOT_FOUND:
-                break
-            self.address.Delete(item)
-        # add the path to the beginning
-        self.address.Insert(path, 0)
-
-        while self.address.GetCount() > 30:
-            # only remember the last 30 path
-            self.address.Delete(30)
-
-    def OnGoToAddress(self, event):
-        path = self.address.GetValue()
-        self.doGoToAddress(path)
 
     def OnRefresh(self, event):
         root = self.dirtree.GetRootItem()
@@ -857,10 +840,11 @@ class DirPanel(wx.Panel):
         menu.Destroy()
 
     def OnRightClickItem(self, event):
+        self.dirtree.SelectItem(event.GetItem())
         self.active_items = self.dirtree.GetSelections()
         menu = wx.Menu()
         menu.Append(wx.ID_OPEN, "Open\tCtrl+Enter")
-        menu.Append(self.ID_OPEN_IN_FINDER, "Reveal in Finder\tAlt+Ctrl+R")
+        menu.Append(self.ID_OPEN_IN_FINDER, f"Reveal in {get_file_finder_name()}\tAlt+Ctrl+R")
         menu.AppendSeparator()
         #menu.Append(wx.ID_CUT, "Cut\tCtrl+X")
         menu.Append(wx.ID_COPY, "Copy\tCtrl+C")
@@ -894,7 +878,19 @@ class DirPanel(wx.Panel):
 
     def delete(self, items):
         for item in items:
-            os.remove(self.get_file_path(item))
+            path = self.get_file_path(item)
+            _, basename = os.path.split(path)
+            msg = f'Do you want to delete "{basename}"?'
+            parent = self.GetTopLevelParent()
+            dlg = wx.MessageDialog(self, msg, parent.GetLabel(), wx.YES_NO)
+            result = dlg.ShowModal() == wx.ID_YES
+            dlg.Destroy()
+            if not result:
+                continue
+            if os.path.isfile(path):
+                os.remove(path)
+            elif os.path.isdir(path):
+                shutil.rmtree(path)
             self.dirtree.Delete(item)
 
     def OnProcessEvent(self, event):
@@ -1025,8 +1021,8 @@ class DirPanel(wx.Panel):
             if 0 <= self.history_index < len(self.history):
                 # remove the history after current point
                 self.history = self.history[:self.history_index+1]
-
-            self.history.append(root_dir)
+            if not (len(self.history) > 0 and self.history[-1] == root_dir):
+                self.history.append(root_dir)
             self.history_index = len(self.history)-1
 
     def OnShowHidden(self, event):

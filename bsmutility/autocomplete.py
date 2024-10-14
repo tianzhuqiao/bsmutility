@@ -96,7 +96,165 @@ class SuggestionsPopup(wx.Frame):
         return self._unformated_suggestions[n]
 
 
-class AutocompleteTextCtrl(wx.TextCtrl):
+class AutocompleteMixin():
+
+    def __init__(self, height=300, frequency=250, value="", completer=None):
+        self.completer = None
+        self.queued_popup = False
+        self.skip_event = False
+        self._string = value
+        self.height = height
+        self.frequency = frequency
+        if completer:
+            self.set_completer(completer)
+
+    def unset_completer(self):
+        if self.completer is not None:
+            frame = self.GetParent()
+            while frame and (not isinstance(frame, wx.Frame)) and\
+                  (not isinstance(frame, wx.Dialog)):
+                frame = frame.GetParent()
+            frame.Unbind(wx.EVT_MOVE)
+
+    def set_completer(self, completer):
+        """
+        Initializes the autocompletion. The 'completer' has to be a function
+        with one argument (the current value of the control, i.e. the query)
+        and it has to return two lists: formatted (html) and unformatted
+        suggestions.
+        """
+        self.completer = completer
+
+        frame = self.GetParent()
+        while frame and (not isinstance(frame, wx.Frame)) and\
+              (not isinstance(frame, wx.Dialog)):
+            frame = frame.GetParent()
+
+        self.popup = SuggestionsPopup(frame)
+
+        frame.Bind(wx.EVT_MOVE, self.OnMove)
+        self.Bind(wx.EVT_TEXT, self.OnTextUpdate)
+        self.Bind(wx.EVT_SIZE, self.OnSizeChange)
+        self.Bind(wx.EVT_KEY_DOWN, self.OnKeyDown)
+        self.Bind(wx.EVT_KILL_FOCUS, self.OnKillFocus)
+        self.popup._suggestions.Bind(wx.EVT_LEFT_DOWN,
+                                     self.OnSuggestionClicked)
+        self.popup._suggestions.Bind(wx.EVT_KEY_DOWN, self.OnSuggestionKeyDown)
+
+    def adjust_popup_position(self):
+        self.popup.SetPosition(self.ClientToScreen((0, self.GetSize().GetHeight())).Get())
+
+    def OnMove(self, event):
+        self.hide_popup()
+        self.adjust_popup_position()
+        event.Skip()
+
+    def OnTextUpdate(self, event):
+        # only show the popup when the text has changed; so type in 'Enter'
+        # will not bring the popup
+        if event.GetString() != self._string:
+            self._string = event.GetString()
+            if self.skip_event:
+                self.skip_event = False
+            elif not self.queued_popup:
+                if self.IsShownOnScreen():
+                    wx.CallLater(self.frequency, self.auto_complete)
+                    self.queued_popup = True
+        event.Skip()
+
+    def auto_complete(self, *args, **kwargs):
+        self.queued_popup = False
+        if self.Value != "" and self.IsShownOnScreen():
+            formated, unformated, offset = self.completer(self.Value)
+            if formated:
+                self.auto_comp_offset = offset
+                self.popup.SetSuggestions(formated, unformated)
+                self.adjust_popup_position()
+                self.popup.ShowWithoutActivating()
+                self.SetFocus()
+                # in linux, SetFocus may select the whole string, de-select it
+                self.SelectNone()
+            else:
+                self.popup.Hide()
+        else:
+            self.popup.Hide()
+
+    def OnSizeChange(self, event):
+        if self.popup.IsShownOnScreen():
+            self.popup.Hide()
+        self.popup.SetSize(self.GetSize()[0], self.height)
+        event.Skip()
+
+    def OnKeyDown(self, event):
+        key = event.GetKeyCode()
+
+        if key == wx.WXK_UP:
+            self.popup.CursorUp()
+            return
+
+        elif key == wx.WXK_DOWN:
+            self.popup.CursorDown()
+            return
+
+        elif key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER) and self.popup.Shown:
+            self.skip_event = True
+            txt = self.popup.GetSelectedSuggestion()
+            self.apply_suggestion(txt)
+            self.popup.Hide()
+            event.Skip()
+            return
+
+        elif key == wx.WXK_HOME:
+            self.popup.CursorHome()
+
+        elif key == wx.WXK_END:
+            self.popup.CursorEnd()
+
+        elif event.ControlDown() and six.unichr(key).lower() == "a":
+            self.SelectAll()
+
+        elif key == wx.WXK_ESCAPE:
+            self.popup.Hide()
+            return
+
+        event.Skip()
+
+    def apply_suggestion(self, text):
+        start = end = self.GetLastPosition()
+        if self.auto_comp_offset:
+            start -= self.auto_comp_offset
+        self.Replace(start, end, text)
+        self.SetInsertionPointEnd()
+
+    def OnSuggestionClicked(self, event):
+        self.skip_event = True
+        n = self.popup._suggestions.VirtualHitTest(event.Position.y)
+        text = self.popup.GetSuggestion(n)
+        self.apply_suggestion(text)
+        wx.CallAfter(self.SetFocus)
+        event.Skip()
+
+    def OnSuggestionKeyDown(self, event):
+        key = event.GetKeyCode()
+        if key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
+            self.skip_event = True
+            self.apply_suggestion(self.popup.GetSelectedSuggestion())
+            self.popup.Hide()
+        event.Skip()
+
+    def hide_popup(self):
+        if self.popup.IsShownOnScreen():
+            self.popup.Hide()
+
+    def check_focus(self):
+        if not self.HasFocus():
+            self.hide_popup()
+
+    def OnKillFocus(self, event):
+        wx.CallAfter(self.check_focus)
+        event.Skip()
+
+class AutocompleteTextCtrl(wx.TextCtrl, AutocompleteMixin):
     def __init__(self,
                  parent,
                  height=300,
@@ -108,152 +266,13 @@ class AutocompleteTextCtrl(wx.TextCtrl):
         if multiline:
             style = style | wx.TE_MULTILINE
         wx.TextCtrl.__init__(self, parent, value=value, style=style)
-        self.height = height
-        self.frequency = frequency
-        self.completer = None
-        if completer:
-            self.SetCompleter(completer)
-        self.queued_popup = False
-        self.skip_event = False
-        self._string = value
+        AutocompleteMixin.__init__(self, height, frequency, value, completer)
 
     def Destroy(self):
-        if self.completer is not None:
-            frame = self.GetParent()
-            while frame and (not isinstance(frame, wx.Frame)) and\
-                  (not isinstance(frame, wx.Dialog)):
-                frame = frame.GetParent()
-            frame.Unbind(wx.EVT_MOVE)
+        self.UnsetCompleter()
         return super().Destroy()
 
-    def SetCompleter(self, completer):
-        """
-        Initializes the autocompletion. The 'completer' has to be a function
-        with one argument (the current value of the control, i.e. the query)
-        and it has to return two lists: formatted (html) and unformatted
-        suggestions.
-        """
-        self.completer = completer
-
-        frame = self.GetParent()
-        while frame and (not isinstance(frame, wx.Frame)) and\
-              (not isinstance(frame, wx.Dialog)):
-            frame = frame.GetParent()
-
-        self.popup = SuggestionsPopup(frame)
-
-        frame.Bind(wx.EVT_MOVE, self.OnMove)
-        self.Bind(wx.EVT_TEXT, self.OnTextUpdate)
-        self.Bind(wx.EVT_SIZE, self.OnSizeChange)
-        self.Bind(wx.EVT_KEY_DOWN, self.OnKeyDown)
-        self.popup._suggestions.Bind(wx.EVT_LEFT_DOWN,
-                                     self.OnSuggestionClicked)
-        self.popup._suggestions.Bind(wx.EVT_KEY_DOWN, self.OnSuggestionKeyDown)
-
-    def AdjustPopupPosition(self):
-        self.popup.Position = self.ClientToScreen((0, self.GetSize().GetHeight())).Get()
-
-    def OnMove(self, event):
-        self.AdjustPopupPosition()
-        event.Skip()
-
-    def OnTextUpdate(self, event):
-        # only show the popup when the text has changed; so type in 'Enter'
-        # will not bring the popup
-        if event.GetString() != self._string:
-            self._string = event.GetString()
-            if self.skip_event:
-                self.skip_event = False
-            elif not self.queued_popup:
-                wx.CallLater(self.frequency, self.AutoComplete)
-                self.queued_popup = True
-        event.Skip()
-
-    def AutoComplete(self, *args, **kwargs):
-        self.queued_popup = False
-        if self.Value != "":
-            formated, unformated, offset = self.completer(self.Value)
-            if formated:
-                self.auto_comp_offset = offset
-                self.popup.SetSuggestions(formated, unformated)
-                self.AdjustPopupPosition()
-                self.Unbind(wx.EVT_KILL_FOCUS)
-                self.popup.ShowWithoutActivating()
-                self.SetFocus()
-                # in linux, SetFocus may select the whole string, de-select it
-                self.SelectNone()
-                self.Bind(wx.EVT_KILL_FOCUS, self.OnKillFocus)
-            else:
-                self.popup.Hide()
-        else:
-            self.popup.Hide()
-
-    def OnSizeChange(self, event):
-        self.popup.Size = (self.Size[0], self.height)
-        event.Skip()
-
-    def OnKeyDown(self, event):
-        key = event.GetKeyCode()
-
-        if key == wx.WXK_UP:
-            self.popup.CursorUp()
-            return
-
-        elif key == wx.WXK_DOWN:
-            self.popup.CursorDown()
-            return
-
-        elif key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER) and self.popup.Shown:
-            self.skip_event = True
-            txt = self.popup.GetSelectedSuggestion()
-            self.ApplySuggestion(txt)
-            self.popup.Hide()
-            return
-
-        elif key == wx.WXK_HOME:
-            self.popup.CursorHome()
-
-        elif key == wx.WXK_END:
-            self.popup.CursorEnd()
-
-        elif event.ControlDown() and six.unichr(key).lower() == "a":
-            self.SelectAll()
-
-        elif key == wx.WXK_ESCAPE:
-            self.popup.Hide()
-            return
-
-        event.Skip()
-
-    def ApplySuggestion(self, text):
-        start = end = self.GetLastPosition()
-        if self.auto_comp_offset:
-            start -= self.auto_comp_offset
-        self.Replace(start, end, text)
-        self.SetInsertionPointEnd()
-
-    def OnSuggestionClicked(self, event):
-        self.skip_event = True
-        n = self.popup._suggestions.VirtualHitTest(event.Position.y)
-        text = self.popup.GetSuggestion(n)
-        self.ApplySuggestion(text)
-        wx.CallAfter(self.SetFocus)
-        event.Skip()
-
-    def OnSuggestionKeyDown(self, event):
-        key = event.GetKeyCode()
-        if key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
-            self.skip_event = True
-            self.ApplySuggestion(self.popup.GetSelectedSuggestion())
-            self.popup.Hide()
-        event.Skip()
-
-    def OnKillFocus(self, event):
-        if not self.popup.IsActive():
-            self.popup.Hide()
-        event.Skip()
-
-class AutocompleteComboBox(wx.ComboBox):
+class AutocompleteComboBox(wx.ComboBox, AutocompleteMixin):
     def __init__(self,
                  parent,
                  height=300,
@@ -261,148 +280,14 @@ class AutocompleteComboBox(wx.ComboBox):
                  frequency=250,
                  value="",
                  style=wx.TE_PROCESS_ENTER):
-        super().__init__(parent, value=value, style=style)
-        self.height = height
-        self.frequency = frequency
-        if completer:
-            self.SetCompleter(completer)
-        self.queued_popup = False
-        self.skip_event = False
-        self._string = value
+        wx.ComboBox.__init__(self, parent, value=value, style=style)
+        AutocompleteMixin.__init__(self, height, frequency, value, completer)
 
     def Destroy(self):
-        if self.completer is not None:
-            frame = self.GetParent()
-            while frame and (not isinstance(frame, wx.Frame)) and\
-                  (not isinstance(frame, wx.Dialog)):
-                frame = frame.GetParent()
-            frame.Unbind(wx.EVT_MOVE)
+        self.unset_completer()
         return super().Destroy()
 
-    def SetCompleter(self, completer):
-        """
-        Initializes the autocompletion. The 'completer' has to be a function
-        with one argument (the current value of the control, i.e. the query)
-        and it has to return two lists: formatted (html) and unformatted
-        suggestions.
-        """
-        self.completer = completer
-
-        frame = self.GetParent()
-        while frame and (not isinstance(frame, wx.Frame)) and\
-              (not isinstance(frame, wx.Dialog)):
-            frame = frame.GetParent()
-
-        self.popup = SuggestionsPopup(frame)
-
-        frame.Bind(wx.EVT_MOVE, self.OnMove)
-        self.Bind(wx.EVT_TEXT, self.OnTextUpdate)
-        self.Bind(wx.EVT_SIZE, self.OnSizeChange)
-        self.Bind(wx.EVT_KEY_DOWN, self.OnKeyDown)
-        self.popup._suggestions.Bind(wx.EVT_LEFT_DOWN,
-                                     self.OnSuggestionClicked)
-        self.popup._suggestions.Bind(wx.EVT_KEY_DOWN, self.OnSuggestionKeyDown)
-
-    def AdjustPopupPosition(self):
-        self.popup.Position = self.ClientToScreen((0, self.GetSize().GetHeight())).Get()
-
-    def OnMove(self, event):
-        self.AdjustPopupPosition()
-        event.Skip()
-
-    def OnTextUpdate(self, event):
-        # only show the popup when the text has changed; so type in 'Enter'
-        # will not bring the popup
-        if event.GetString() != self._string:
-            self._string = event.GetString()
-            if self.skip_event:
-                self.skip_event = False
-            elif not self.queued_popup:
-                wx.CallLater(self.frequency, self.AutoComplete)
-                self.queued_popup = True
-        event.Skip()
-
-    def AutoComplete(self, *args, **kwargs):
-        self.queued_popup = False
-        if self.Value != "":
-            formated, unformated, offset = self.completer(self.Value)
-            if formated:
-                self.auto_comp_offset = offset
-                self.popup.SetSuggestions(formated, unformated)
-                self.AdjustPopupPosition()
-                self.Unbind(wx.EVT_KILL_FOCUS)
-                self.popup.ShowWithoutActivating()
-                self.SetFocus()
-                # SetFocus may select the whole string, de-select it
-                self.SelectNone()
-                self.SetInsertionPointEnd()
-                self.Bind(wx.EVT_KILL_FOCUS, self.OnKillFocus)
-            else:
-                self.popup.Hide()
-        else:
-            self.popup.Hide()
-
-    def OnSizeChange(self, event):
-        self.popup.Size = (self.Size[0], self.height)
-        event.Skip()
-
-    def OnKeyDown(self, event):
-        key = event.GetKeyCode()
-
-        if key == wx.WXK_UP:
-            self.popup.CursorUp()
-            return
-
-        elif key == wx.WXK_DOWN:
-            self.popup.CursorDown()
-            return
-
-        elif key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER) and self.popup.Shown:
-            self.skip_event = True
-            txt = self.popup.GetSelectedSuggestion()
-            self.ApplySuggestion(txt)
-            self.popup.Hide()
-            return
-
-        elif key == wx.WXK_HOME:
-            self.popup.CursorHome()
-
-        elif key == wx.WXK_END:
-            self.popup.CursorEnd()
-
-        elif event.ControlDown() and six.unichr(key).lower() == "a":
-            self.SelectAll()
-
-        elif key == wx.WXK_ESCAPE:
-            self.popup.Hide()
-            return
-
-        event.Skip()
-
-    def ApplySuggestion(self, text):
-        start = end = self.GetLastPosition()
-        if self.auto_comp_offset:
-            start -= self.auto_comp_offset
-        self.Replace(start, end, text)
-        self.SetInsertionPointEnd()
-
-    def OnSuggestionClicked(self, event):
-        self.skip_event = True
-        n = self.popup._suggestions.VirtualHitTest(event.Position.y)
-        text = self.popup.GetSuggestion(n)
-        self.ApplySuggestion(text)
-        wx.CallAfter(self.SetFocus)
-        event.Skip()
-
-    def OnSuggestionKeyDown(self, event):
-        key = event.GetKeyCode()
-        if key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
-            self.skip_event = True
-            self.ApplySuggestion(self.popup.GetSelectedSuggestion())
-            self.popup.Hide()
-        event.Skip()
-
-    def OnKillFocus(self, event):
-        if not self.popup.IsActive():
-            self.popup.Hide()
-        event.Skip()
+    def auto_complete(self, *args, **kwargs):
+        super().auto_complete(*args, **kwargs)
+        if self.popup.IsShownOnScreen():
+            self.SetInsertionPointEnd()

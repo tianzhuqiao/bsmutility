@@ -1,10 +1,14 @@
+import os
 import sys
 import keyword
 import subprocess as sp
 import traceback
+import glob
+import shlex
 import wx
 import wx.py.dispatcher as dp
 import six
+from .utility import unescape_path
 
 aliasDict = {}
 
@@ -25,7 +29,8 @@ def magicSingle(command):
         command = command + '()'
     elif command[:3] in ('ls ', 'cd '):
         # when using the 'ls ' or 'cd ' constructs, fill in both parentheses and quotes
-        command = command[:2] + '("' + command[3:].strip() + '")'
+        path = command[3:].strip().strip('"')
+        command = f'{command[:2]}("{path}")'
     elif command[:5] in ('help ', ):
         command = command[:4] + '("' + command[5:].strip() + '")'
     elif command[:4] in ('doc ', ):
@@ -103,8 +108,8 @@ def magic(command):
 
         firstLine = False
 
-    return '\n'.join(commandList)
-
+    command = '\n'.join(commandList)
+    return command
 
 def sx(cmd, *args, **kwds):
     wait = True
@@ -116,10 +121,10 @@ def sx(cmd, *args, **kwds):
     if wx.Platform == '__WXMSW__':
         startupinfo = sp.STARTUPINFO()
         startupinfo.dwFlags |= sp.STARTF_USESHOWWINDOW
-    # try the standalone command first
+    # try the shell command first
     try:
         if wait:
-            p = sp.Popen(cmd,
+            p = sp.Popen(shlex.split(cmd),
                          startupinfo=startupinfo,
                          stdout=sp.PIPE,
                          stderr=sp.PIPE,
@@ -127,21 +132,43 @@ def sx(cmd, *args, **kwds):
             dp.send('shell.write_out', text=p.stderr.read().decode())
             dp.send('shell.write_out', text=p.stdout.read().decode())
         else:
-            p = sp.Popen(cmd.split(' '), startupinfo=startupinfo)
+            p = sp.Popen(shlex.split(cmd), startupinfo=startupinfo, shell=True)
         return
     except:
         traceback.print_exc(file=sys.stdout)
-    # try the shell command
+
+    # try the standalone command
     try:
         if wait:
-            p = sp.Popen(cmd.split(' '),
+            p = sp.Popen(shlex.split(cmd),
                          startupinfo=startupinfo,
-                         shell=True,
                          stdout=sp.PIPE,
                          stderr=sp.PIPE)
             dp.send('shell.write_out', text=p.stdout.read().decode())
         else:
-            p = sp.Popen(cmd.split(' '), startupinfo=startupinfo, shell=True)
+            p = sp.Popen(shlex.split(cmd), startupinfo=startupinfo)
         return
     except:
         traceback.print_exc(file=sys.stdout)
+
+def pwd():
+    print(os.getcwd())
+
+def cd(path,usePrint=True):
+    path = unescape_path(path)
+    os.chdir(os.path.expandvars(os.path.expanduser(path)))
+    if usePrint:
+        pwd()
+
+def ls(path='*',fullpath=False):
+    path = unescape_path(path)
+    path = os.path.expandvars(os.path.expanduser(path))
+    if os.path.isdir(path):
+        path += "/*"
+    g=glob.glob(path)
+    if fullpath:
+        for i in g:
+            print(i)
+    else:
+        for i in g:
+            print(os.path.split(i)[1])

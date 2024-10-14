@@ -14,7 +14,7 @@ from wx import stc
 from wx.py.pseudo import PseudoFile
 from .debugger import EngineDebugger
 from .editor_base import EditorTheme, EditorFind
-from .shell_base import magic, aliasDict, sx
+from .shell_base import magic, aliasDict, sx, ls, cd, pwd, unescape_path
 from .utility import get_path_list
 
 
@@ -80,6 +80,9 @@ class Shell(pyshell.Shell):
         # the default sx function (!cmd to run external command) does not work
         # on windows
         __builtin__.sx = sx
+        __builtin__.ls = ls
+        __builtin__.cd = cd
+        __builtin__.pwd = pwd
         self.callTipInsert = False
         self.searchHistory = True
         self.silent = False
@@ -445,6 +448,7 @@ class Shell(pyshell.Shell):
                     cmds = shlex.split(cmd)
                     cmd_main = cmds[0]
                     prefix = cmds[-1] if len(cmds) > 1 else ''
+                    prefix = unescape_path(prefix)
                     path, prefix = os.path.split(prefix)
                     if cmd_main in ['cd', '!cd', '!rmdir', '!mkdir']:
                         k = get_path_list(path=path, prefix=prefix, files=False)
