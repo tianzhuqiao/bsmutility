@@ -246,9 +246,7 @@ class PyEditor(EditorBase):
             self.CmdKeyAssign(ord('R'), wx.stc.STC_SCMOD_META, wx.stc.STC_CMD_REDO)
 
         self.SetLexer(stc.STC_LEX_PYTHON)
-        # add '.' to wordchars, so in mouse dwell event, it will capture variable
-        # 'a.b'
-        self.SetWordChars('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.')
+        self.SetWordChars('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_')
         keywords = list(keyword.kwlist)
         for key in ['None', 'True', 'False']:
             if key in keywords:
@@ -358,9 +356,15 @@ class PyEditor(EditorBase):
         pos = event.GetPosition()
         if pos == -1:
             return
+        wordchars = self.GetWordChars()
+
+        # add '.' to wordchars, to detect 'a.b'
+        if '.' not in wordchars:
+            self.SetWordChars(wordchars + '.')
         WordStart = self.WordStartPosition(pos, True)
         WordEnd = self.WordEndPosition(pos, True)
         text = self.GetTextRange(WordStart, WordEnd)
+        self.SetWordChars(wordchars)
         try:
             status = resp[0][1]
             frames = status['frames']

@@ -680,9 +680,12 @@ class EditorBase(wx.py.editwindow.EditWindow):
     def OnLeftUp(self, event):
         """left mouse button released"""
         # remove the highlighting when click somewhere else
-        sel = self.GetSelectedText()
-        if self.highlightStr and sel != self.highlightStr:
-            self.highlightText(self.highlightStr, False)
+        pos = self.GetCurrentPos()
+        start = self.WordStartPosition(pos, True)
+        end = self.WordEndPosition(pos, True)
+        text = self.GetTextRange(start, end)
+        if self.highlightStr:
+            self.highlightText(self.highlightStr, text == self.highlightStr)
 
         event.Skip()
 
@@ -691,10 +694,6 @@ class EditorBase(wx.py.editwindow.EditWindow):
         current = 0
         position = -1
         flag = stc.STC_FIND_WHOLEWORD | stc.STC_FIND_MATCHCASE
-        if not highlight:
-            self.IndicatorClearRange(0, self.GetLength())
-            self.highlightStr = ""
-            return
 
         self.highlightStr = strWord
         self.SetIndicatorCurrent(0)
@@ -706,7 +705,15 @@ class EditorBase(wx.py.editwindow.EditWindow):
             current = position + len(strWord)
             if position == -1:
                 break
-            self.IndicatorFillRange(position, len(strWord))
+            if self.GetSelectionStart() == position:
+                continue
+            if highlight:
+                self.IndicatorFillRange(position, len(strWord))
+            else:
+                self.IndicatorClearRange(position, len(strWord))
+
+        if not highlight:
+            self.highlightStr = ""
 
     def needsIndent(self, firstWord, lastChar):
         '''Tests if a line needs extra indenting, i.e., if, while, def, etc '''
@@ -830,6 +837,8 @@ class EditorBase(wx.py.editwindow.EditWindow):
         self.SetEdgeMode(stc.STC_EDGE_NONE)
 
         self.IndicatorSetStyle(0, stc.STC_INDIC_ROUNDBOX)
+        self.IndicatorSetAlpha(0, 70)
+        self.IndicatorSetOutlineAlpha(0, 100)
         self.SetWrapMode(stc.STC_WRAP_WORD)
 
         theme = 'solarized-dark'
