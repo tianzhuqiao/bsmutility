@@ -611,7 +611,7 @@ class DirPanel(wx.Panel):
             (wx.ACCEL_CTRL, ord('C'), wx.ID_COPY),
             (wx.ACCEL_ALT | wx.ACCEL_CTRL, ord('C'), self.ID_COPY_PATH),
             (wx.ACCEL_ALT | wx.ACCEL_SHIFT | wx.ACCEL_CTRL, ord('C'), self.ID_COPY_PATH_REL),
-            (wx.ACCEL_NORMAL, wx.WXK_RETURN, self.ID_RENAME),
+            (wx.ACCEL_SHIFT, wx.WXK_RETURN, self.ID_RENAME),
             (wx.ACCEL_NORMAL, wx.WXK_DELETE, wx.ID_DELETE),
         ]
         self.accel = wx.AcceleratorTable(accel)
