@@ -803,7 +803,9 @@ class EditorBase(wx.py.editwindow.EditWindow):
 
     def OnUpdateUI(self, event):
         super().OnUpdateUI(event)
-        self.UpdateStatusText()
+        # CallAfter otherwise looks like it will conflict with CanPaste (crash
+        # the context menu on Linux)
+        wx.CallAfter(self.UpdateStatusText)
 
     def SetupEditor(self):
         """
