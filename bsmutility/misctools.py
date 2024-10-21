@@ -877,16 +877,21 @@ class DirPanel(wx.Panel):
         wx.TheClipboard.Close()
 
     def delete(self, items):
+        confirm = True
         for item in items:
             path = self.get_file_path(item)
-            _, basename = os.path.split(path)
-            msg = f'Do you want to delete "{basename}"?'
-            parent = self.GetTopLevelParent()
-            dlg = wx.MessageDialog(self, msg, parent.GetLabel(), wx.YES_NO)
-            result = dlg.ShowModal() == wx.ID_YES
-            dlg.Destroy()
-            if not result:
-                continue
+            if confirm:
+                _, basename = os.path.split(path)
+                msg = f'Do you want to delete "{basename}"?'
+                parent = self.GetTopLevelParent()
+                dlg = wx.RichMessageDialog(self, msg, parent.GetLabel(), wx.YES_NO)
+                if len(items) > 1:
+                    dlg.ShowCheckBox('Do not ask me again', False)
+                result = dlg.ShowModal() == wx.ID_YES
+                confirm = dlg.IsCheckBoxChecked()
+                dlg.Destroy()
+                if not result:
+                    continue
             if os.path.isfile(path):
                 os.remove(path)
             elif os.path.isdir(path):
