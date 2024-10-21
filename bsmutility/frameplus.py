@@ -151,6 +151,7 @@ class FramePlus(wx.Frame):
         # load the perspective
         if not kwargs.get('ignore_perspective', False):
             self.LoadPerspective()
+            dp.send('frame.perspective_loaded')
 
         self.Bind(aui.EVT_AUINOTEBOOK_TAB_RIGHT_DOWN, self.OnPageRightDown)
         self.Bind(wx.EVT_RIGHT_DOWN, self.OnRightDown)

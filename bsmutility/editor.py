@@ -713,13 +713,16 @@ class PyEditorPanel(PanelBase):
             caption = caption + '*'
         return caption
 
+    def UpdateCaption(self):
+        dp.send('frame.set_panel_title', pane=self, title=self.GetCaption(),
+                tooltip=self.filename, name=self.filename)
+
     def OnCodeModified(self, event):
         """called when the file is modified"""
         if self.was_modified == self.editor.GetModify():
             return
         self.was_modified = self.editor.GetModify()
-        dp.send('frame.set_panel_title', pane=self, title=self.GetCaption(),
-                tooltip=self.filename, name=self.filename)
+        self.UpdateCaption()
 
     def Load(self, filename, add_to_history=True):
         """open file"""
@@ -762,8 +765,7 @@ class PyEditorPanel(PanelBase):
         if not self.filename:
             return
         self.editor.SaveFile(self.filename)
-        dp.send('frame.set_panel_title', pane=self, title=self.GetCaption(),
-                tooltip=self.filename, name=self.filename)
+        self.UpdateCaption()
         self.was_modified = False
         self.update_bp()
 
@@ -785,8 +787,7 @@ class PyEditorPanel(PanelBase):
             self.filename = path
             dlg.Destroy()
         self.editor.SaveFile(self.filename)
-        dp.send('frame.set_panel_title', pane=self, title=self.GetCaption(),
-                tooltip=self.filename, name=self.filename)
+        self.UpdateCaption()
         self.was_modified = False
         self.update_bp()
 
@@ -838,6 +839,30 @@ class PyEditorPanel(PanelBase):
             if result:
                 self.saveFile()
         return self.editor.GetModify()
+
+    def CheckModifiedForClosing(self):
+        """check whether it is modified"""
+        allow_close = True
+        if self.editor.GetModify():
+            filename = self.GetFileName()
+            msg = f'"{filename}" has been modified. Save it first?'
+            # use top level frame as parent, otherwise it may crash when
+            # it is called in Destroy()
+            parent = self.GetTopLevelParent()
+            dlg = wx.MessageDialog(parent, msg, parent.GetLabel(), wx.YES_NO | wx.CANCEL)
+            dlg.SetExtendedMessage("Your changes will be lost if you don't save them.")
+            result = dlg.ShowModal()
+            dlg.Destroy()
+            if result == wx.ID_YES:
+                self.saveFile()
+                allow_close = not self.editor.GetModify()
+            elif result == wx.ID_CANCEL:
+                allow_close = not self.editor.GetModify()
+            else:
+                # close without save
+                allow_close = True
+
+        return allow_close
 
     def OnBtnCheck(self, event):
         """check the syntax"""
@@ -992,6 +1017,16 @@ class Editor(FileViewBase):
         dp.connect(cls.OnFrameClosing, 'frame.closing')
         dp.connect(cls.DebugPaused, 'debugger.paused')
         dp.connect(cls.DebugUpdateScope, 'debugger.update_scopes')
+        dp.connect(cls.OnPerspectiveLoaded, 'frame.perspective_loaded')
+
+    @classmethod
+    def OnPerspectiveLoaded(cls):
+        for panel in cls.panel_type.Gcc.get_all_managers():
+            # update the panel caption, as it maybe changed by the perspective
+            # for example, when close the app, the file 'a.py' is modified but
+            # closed without saving, then its caption will be 'a.py*' in
+            # perspective.
+            panel.UpdateCaption()
 
     @classmethod
     def get_menu(cls):
@@ -1095,11 +1130,11 @@ class Editor(FileViewBase):
             for i in range(pane.GetPageCount()):
                 page = pane.GetPage(i)
                 if isinstance(page, PyEditorPanel):
-                    if page.CheckModified() and page.filename is not None:
+                    if not page.CheckModifiedForClosing() and page.filename is not None:
                         # the file has been modified, stop closing
                         event.Veto()
         elif isinstance(pane, PyEditorPanel):
-            if pane.CheckModified() and pane.filename is not None:
+            if not pane.CheckModifiedForClosing() and pane.filename is not None:
                 # the file has been modified, stop closing
                 event.Veto()
 
@@ -1107,7 +1142,7 @@ class Editor(FileViewBase):
     def OnFrameClosing(cls, event):
         """the frame is exiting"""
         for panel in cls.panel_type.get_all_managers():
-            if panel.CheckModified():
+            if not panel.CheckModifiedForClosing():
                 # the file has been modified, stop closing
                 event.Veto()
                 break
