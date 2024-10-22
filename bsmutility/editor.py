@@ -1017,6 +1017,8 @@ class Editor(FileViewBase):
         dp.connect(cls.OnFrameClosing, 'frame.closing')
         dp.connect(cls.DebugPaused, 'debugger.paused')
         dp.connect(cls.DebugUpdateScope, 'debugger.update_scopes')
+        dp.connect(cls.setting_theme_font, 'editor.theme.font')
+        dp.connect(cls.setting_theme_color, 'editor.theme.color')
         dp.connect(cls.OnPerspectiveLoaded, 'frame.perspective_loaded')
 
     @classmethod
@@ -1027,6 +1029,37 @@ class Editor(FileViewBase):
             # closed without saving, then its caption will be 'a.py*' in
             # perspective.
             panel.UpdateCaption()
+
+
+    @classmethod
+    def setting_theme_font(cls, **kwargs):
+        resp = dp.send('frame.get_config', group='theme')
+        if resp is None or resp[0][1] is None:
+            return
+        themes = resp[0][1]
+        for k in kwargs:
+            for t in themes:
+                if 'font' in themes[t]:
+                    if wx.Platform in themes[t]['font'] and k in themes[t]['font'][wx.Platform]:
+                        themes[t]['font'][wx.Platform][k] = kwargs[k]
+                    elif 'default' in themes[t]['font'] and k in themes[t]['font']['default']:
+                        themes[t]['font']['default'][k] = kwargs[k]
+
+
+        dp.send('frame.set_config', group='theme', **themes)
+
+    @classmethod
+    def setting_theme_color(cls, **kwargs):
+        resp = dp.send('frame.get_config', group='theme')
+        if resp is None or resp[0][1] is None:
+            return
+        themes = resp[0][1]
+        for k in kwargs:
+            for t in themes:
+                if 'color' in themes[t] and k in themes[t]['color']:
+                    themes[t]['color'][k] = kwargs[k]
+
+        dp.send('frame.set_config', group='theme', **themes)
 
     @classmethod
     def get_menu(cls):

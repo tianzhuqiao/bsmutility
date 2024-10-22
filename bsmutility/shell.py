@@ -102,6 +102,7 @@ class Shell(pyshell.Shell):
         self.interp.locals['on'] = True
         self.interp.locals['off'] = False
         self.interp.locals['shell'] = self
+        self.interp.locals['setting'] = self.setting
 
         dp.connect(self.writeOut, 'shell.write_out')
         dp.connect(self.runCommand, 'shell.run')
@@ -161,6 +162,15 @@ class Shell(pyshell.Shell):
                 self.SetWrapMode(wx.stc.STC_WRAP_WORD)
             else:
                 self.SetWrapMode(wx.stc.STC_WRAP_NONE)
+
+    def setting(self, *args, **kwargs):
+        try:
+            # the main entrance to set the options,for example
+            # setting("editor.theme.font", default="face:Menlo,size:16")
+            dp.send(*args, **kwargs)
+        except:
+            traceback.print_exc(file=sys.stdout)
+
     def clear(self):
         super().clear()
         self.prompt()
