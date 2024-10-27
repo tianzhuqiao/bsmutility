@@ -165,7 +165,11 @@ class DirTreeCtrl(wx.TreeCtrl):
         # check if node already has children
         if self.GetChildrenCount(item) == 0:
             # get files in directory
-            files = os.listdir(directory)
+            try:
+                files = os.listdir(directory)
+            except:
+                traceback.print_exc()
+                return
             files_all = []
             folders_all = []
             # add directory nodes to tree
