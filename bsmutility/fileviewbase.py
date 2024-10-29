@@ -1878,8 +1878,10 @@ class FileViewBase(Interface):
             if pane.GetConfirmClose():
                 msg = f'Do you want to close "{event.GetPane().caption}"?'
                 parent = pane.GetTopLevelParent()
-                dlg = wx.MessageDialog(pane, msg, parent.GetLabel(), wx.YES_NO)
+                dlg = wx.RichMessageDialog(pane, msg, parent.GetLabel(), wx.YES_NO)
+                dlg.ShowCheckBox('Do not ask me again', False)
                 result = dlg.ShowModal() == wx.ID_YES
+                pane.SetConfirmClose(not dlg.IsCheckBoxChecked())
                 dlg.Destroy()
                 if not result:
                     event.Veto()
