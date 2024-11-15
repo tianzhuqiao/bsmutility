@@ -5,14 +5,14 @@ import traceback
 import sys
 import re
 import shutil
-import six
 import platform
 import pathlib
+import six
 import wx
 import wx.py.dispatcher as dp
 import wx.svg
 import aui2 as aui
-from .dirtreectrl import DirTreeCtrl, Directory
+from .dirtreectrl import DirListCtrl
 from .bsmxpm import backward_svg2, backward_gray_svg2, forward_svg2, \
                     forward_gray_svg2, up_svg, home_svg2, more_svg, refresh_svg
 from .autocomplete import AutocompleteTextCtrl
@@ -402,8 +402,9 @@ class HistoryPanel(wx.Panel):
             self.tree.EnsureVisible(child)
 
     def OnActivate(self, event):
-        item = event.GetItem()
-        if not self.tree.ItemHasChildren(item):
+        item = event.GetIndex()
+        filepath = self.tree.GetItemPath(item)
+        if os.path.isfile(filepath):
             command = self.tree.GetItemText(item)
             dp.send(signal='shell.run', command=command)
 
@@ -536,11 +537,7 @@ class DirPanel(wx.Panel):
 
         self.addressbar = AuiPathBar(self, agwStyle=agwStyle | aui.AUI_TB_HORZ_TEXT)
 
-        self.dirtree = DirTreeCtrl(self,
-                                   style=wx.TR_DEFAULT_STYLE
-                                   | wx.TR_HAS_VARIABLE_ROW_HEIGHT
-                                   | wx.TR_HIDE_ROOT
-                                   | wx.TR_EDIT_LABELS)
+        self.dirwin = DirListCtrl(self, style=wx.LC_REPORT|wx.LC_VIRTUAL|wx.LC_EDIT_LABELS)
 
         agwStyle = aui.AUI_TB_OVERFLOW | aui.AUI_TB_PLAIN_BACKGROUND
         self.tb2 = aui.AuiToolBar(self, agwStyle=agwStyle)
@@ -557,7 +554,7 @@ class DirPanel(wx.Panel):
         boxtb.Add(self.addressbar, 1, wx.EXPAND, 0)
         self.box.Add(boxtb, 0, wx.EXPAND, 0)
         #self.box.Add(wx.StaticLine(self), 0, wx.EXPAND)
-        self.box.Add(self.dirtree, 1, wx.EXPAND)
+        self.box.Add(self.dirwin, 1, wx.EXPAND)
         self.box.Add(self.tb2, 0, wx.EXPAND)
 
         self.box.Fit(self)
@@ -573,20 +570,14 @@ class DirPanel(wx.Panel):
         self.Bind(wx.EVT_TOOL, self.OnBack, id=wx.ID_BACKWARD)
         self.Bind(wx.EVT_TOOL, self.OnRefresh, id=wx.ID_REFRESH)
 
-        self.Bind(wx.EVT_TREE_ITEM_ACTIVATED, self.OnItemActivated, self.dirtree)
+        self.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self.OnItemActivated, self.dirwin)
         self.Bind(EVT_AUIPATHBAR_CLICK, self.OnPathBarClick, self.addressbar)
 
         self.Bind(wx.EVT_TEXT, self.OnDoSearch, self.search)
-        self.Bind(wx.EVT_CONTEXT_MENU, self.OnRightClick, self.dirtree)
+        self.Bind(wx.EVT_CONTEXT_MENU, self.OnRightClick, self.dirwin)
 
-        if platform.system() == 'Windows':
-            # on windows, EVT_TREE_ITEM_RIGHT_CLICK will trigger the EVT_CONTEXT_MENU
-            # event, while on mac/linux, EVT_TREE_ITEM_MENU will trigger
-            # EVT_CONTEXT_MENU
-            self.Bind(wx.EVT_TREE_ITEM_MENU, self.OnRightClickItem, self.dirtree)
-        else:
-            self.Bind(wx.EVT_TREE_ITEM_RIGHT_CLICK, self.OnRightClickItem, self.dirtree)
-        self.Bind(wx.EVT_TREE_END_LABEL_EDIT, self.OnRename, self.dirtree)
+        self.dirwin.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self.OnRightClickItem)
+        self.Bind(wx.EVT_LIST_END_LABEL_EDIT, self.OnRename, self.dirwin)
 
         self.Bind(wx.EVT_MENU, self.OnProcessEvent, id=wx.ID_OPEN)
         self.Bind(wx.EVT_MENU, self.OnProcessEvent, id=wx.ID_COPY)
@@ -697,48 +688,23 @@ class DirPanel(wx.Panel):
         self.doGoToAddress(folder)
         if os.path.isfile(filepath):
             filename = os.path.basename(filepath)
-            root_item = self.dirtree.GetRootItem()
-            item, cookie = self.dirtree.GetFirstChild(root_item)
-            while item.IsOk():
-                text = self.dirtree.GetItemText(item)
-                if text == filename:
-                    self.dirtree.SelectItem(item)
-                    self.dirtree.EnsureVisible(item)
+            for item in range(self.dirwin.GetItemCount()):
+                text = self.dirwin.GetItemText(item)
+                if os.path.normpath(text) == os.path.normpath(filename):
+                    self.dirwin.Select(item)
+                    self.dirwin.EnsureVisible(item)
                     break
-                item, cookie = self.dirtree.GetNextChild(root_item, cookie)
 
         if show:
             dp.send(signal='frame.show_panel', panel=self, focus=True)
 
-    def get_file_path(self, item):
-        if item == self.dirtree.GetRootItem():
-            d = self.dirtree.GetItemData(item)
-            if isinstance(d, Directory):
-                return d.directory
-            return None
-
-        filename = self.dirtree.GetItemText(item)
-        parentItem = self.dirtree.GetItemParent(item)
-        d = self.dirtree.GetItemData(parentItem)
-        if isinstance(d, Directory):
-            filepath = os.path.join(d.directory, filename)
-        else:
-            return None
-        return filepath
-
     def open(self, items):
         for item in items:
-            filename = self.dirtree.GetItemText(item)
-            parentItem = self.dirtree.GetItemParent(item)
-            d = self.dirtree.GetItemData(parentItem)
-            if isinstance(d, Directory):
-                filepath = os.path.join(d.directory, filename)
-            else:
-                return
-            if self.dirtree.ItemHasChildren(item):
+            filepath = self.dirwin.GetItemPath(item)
+            if os.path.isdir(filepath):
                 self.doGoToAddress(filepath)
                 return
-            (_, ext) = os.path.splitext(filename)
+            (_, ext) = os.path.splitext(filepath)
 
             # try to open it with the main app
             resp = dp.send(signal='frame.file_drop', filename=filepath)
@@ -752,11 +718,11 @@ class DirPanel(wx.Panel):
 
     def open_in_finder(self, items):
         for item in items:
-            filepath = self.get_file_path(item)
+            filepath = self.dirwin.GetItemPath(item)
             show_file_in_finder(filepath)
 
     def OnItemActivated(self, event):
-        currentItem = event.GetItem()
+        currentItem = event.GetIndex()
         self.open([currentItem])
 
     def OnPathBarClick(self, event):
@@ -769,37 +735,25 @@ class DirPanel(wx.Panel):
             self.SetRootDir(path)
             self.addressbar.SetPath(path)
             self.Layout()
-
         else:
             print(f"Invalid folder: {path}")
 
     def OnRefresh(self, event):
-        root = self.dirtree.GetRootItem()
-        if not root:
-            return
-        d = self.dirtree.GetItemData(root)
-        self.doGoToAddress(d.directory)
+        d = self.dirwin.GetRootDir()
+        self.doGoToAddress(d)
 
     def OnGotoHome(self, event):
-        root = self.dirtree.GetRootItem()
-        if not root:
+        root = self.dirwin.GetRootDir()
+        if os.path.normpath(root) == os.path.normpath(os.getcwd()):
             return
-        d = self.dirtree.GetItemData(root)
-        if isinstance(d, Directory):
-            if d.directory == os.getcwd():
-                return
         self.doGoToAddress(os.getcwd())
 
     def OnGotoParent(self, event):
-        root = self.dirtree.GetRootItem()
-        if not root:
+        root = self.dirwin.GetRootDir()
+        path = os.path.abspath(os.path.join(root, os.path.pardir))
+        if os.path.normpath(path) == os.path.normpath(root):
             return
-        d = self.dirtree.GetItemData(root)
-        if isinstance(d, Directory):
-            path = os.path.abspath(os.path.join(d.directory, os.path.pardir))
-            if path == d.directory:
-                return
-            self.doGoToAddress(path)
+        self.doGoToAddress(path)
 
     def OnBack(self, event):
         # the button is only enabled when history_index>0
@@ -816,7 +770,7 @@ class DirPanel(wx.Panel):
         self.SetRootDir()
 
     def OnRightClick(self, event):
-        self.active_items = [self.dirtree.GetRootItem()]
+        self.active_items = [-1] # -1 is for rootdir
         menu = wx.Menu()
         menu.Append(wx.ID_NEW, "New Folder")
         manager = get_file_finder_name()
@@ -840,8 +794,9 @@ class DirPanel(wx.Panel):
         menu.Destroy()
 
     def OnRightClickItem(self, event):
-        self.dirtree.SelectItem(event.GetItem())
-        self.active_items = self.dirtree.GetSelections()
+        event.Veto()
+        self.dirwin.Select(event.GetIndex())
+        self.active_items = self.dirwin.GetSelections()
         menu = wx.Menu()
         menu.Append(wx.ID_OPEN, "Open\tCtrl+Enter")
         menu.Append(self.ID_OPEN_IN_FINDER, f"Reveal in {get_file_finder_name()}\tAlt+Ctrl+R")
@@ -870,7 +825,7 @@ class DirPanel(wx.Panel):
     def copy(self, items):
         data = wx.FileDataObject()
         for item in items:
-            data.AddFile(self.get_file_path(item))
+            data.AddFile(self.dirwin.GetItemPath(item))
 
         wx.TheClipboard.Open()
         wx.TheClipboard.SetData(data)
@@ -879,7 +834,7 @@ class DirPanel(wx.Panel):
     def delete(self, items):
         confirm = True
         for item in items:
-            path = self.get_file_path(item)
+            path = self.dirwin.GetItemPath(item)
             if confirm:
                 _, basename = os.path.split(path)
                 msg = f'Do you want to delete "{basename}"?'
@@ -888,20 +843,24 @@ class DirPanel(wx.Panel):
                 if len(items) > 1:
                     dlg.ShowCheckBox('Do not ask me again', False)
                 result = dlg.ShowModal() == wx.ID_YES
-                confirm = dlg.IsCheckBoxChecked()
+                confirm = not dlg.IsCheckBoxChecked()
                 dlg.Destroy()
                 if not result:
                     continue
-            if os.path.isfile(path):
-                os.remove(path)
-            elif os.path.isdir(path):
-                shutil.rmtree(path)
-            self.dirtree.Delete(item)
+            try:
+                if os.path.isfile(path):
+                    os.remove(path)
+                elif os.path.isdir(path):
+                    shutil.rmtree(path)
+            except:
+                traceback.print_exc()
+                continue
+            self.dirwin.Delete(item)
 
     def OnProcessEvent(self, event):
         evtId = event.GetId()
         if not self.active_items:
-            self.active_items = self.dirtree.GetSelections()
+            self.active_items = self.dirwin.GetSelections()
         self.do_process(evtId, self.active_items)
         self.active_items = []
 
@@ -926,7 +885,7 @@ class DirPanel(wx.Panel):
         elif evtId == self.ID_RENAME:
             if items:
                 # only edit the first item
-                self.dirtree.EditLabel(items[0])
+                self.dirwin.EditLabel(items[0])
         elif evtId == wx.ID_NEW:
             self.new_folder()
         elif evtId == self.ID_PASTE_FOLDER:
@@ -936,7 +895,7 @@ class DirPanel(wx.Panel):
                 if len(items) == 1:
                     item = items[0]
                     if wx.TheClipboard.GetData(data):
-                        root_dir = self.get_file_path(item)
+                        root_dir = self.dirwin.GetItemPath(item)
                         for src in data.GetFilenames():
                             des = os.path.join(root_dir, os.path.basename(src))
                             if os.path.abspath(des) == os.path.abspath(src):
@@ -947,14 +906,11 @@ class DirPanel(wx.Panel):
                 wx.TheClipboard.Close()
                 if files_copied:
                     self.doGoToAddress(root_dir)
-                    root_item = self.dirtree.GetRootItem()
-                    item, cookie = self.dirtree.GetFirstChild(root_item)
-                    while item.IsOk():
-                        text = self.dirtree.GetItemText(item)
+                    for item in range(self.dirwin.GetItemCount()):
+                        text = self.dirwin.GetItemText(item)
                         if text in files_copied:
-                            self.dirtree.SelectItem(item)
-                            self.dirtree.EnsureVisible(item)
-                        item, cookie = self.dirtree.GetNextChild(root_item, cookie)
+                            self.dirwin.Select(item)
+                            self.dirwin.EnsureVisible(item)
 
     def new_folder(self):
         title = self.GetTopLevelParent().GetLabel()
@@ -964,8 +920,7 @@ class DirPanel(wx.Panel):
         dlg.Destroy()
         if not filename:
             return
-        root_item = self.dirtree.GetRootItem()
-        root_dir = self.get_file_path(root_item)
+        root_dir = self.dirwin.GetRootDir()
         new_folder = os.path.join(root_dir, filename)
         if  os.path.exists(new_folder):
             msg = f"{filename} already exists. Please choose a different name."
@@ -977,20 +932,17 @@ class DirPanel(wx.Panel):
         os.makedirs(new_folder)
         self.SetRootDir(root_dir)
 
-        item, cookie = self.dirtree.GetFirstChild(root_item)
-        while item.IsOk():
-            text = self.dirtree.GetItemText(item)
-            if text.lower() == filename.lower():
-                self.dirtree.SelectItem(item)
-                self.dirtree.EnsureVisible(item)
+        for item in range(self.dirwin.GetItemCount()):
+            text = self.dirwin.GetItemText(item)
+            if os.path.normpath(text) == os.path.normpath(filename):
+                self.dirwin.Select(item)
+                self.dirwin.EnsureVisible(item)
                 break
-            item, cookie = self.dirtree.GetNextChild(root_item, cookie)
-
 
     def copy_path(self, items, relative=False, posix=False):
         file_path = []
         for item in items:
-            path = self.get_file_path(item)
+            path = self.dirwin.GetItemPath(item)
             if relative:
                 path = os.path.relpath(path, os.getcwd())
             if posix:
@@ -1005,19 +957,20 @@ class DirPanel(wx.Panel):
 
     def OnRename(self, event):
         label = event.GetLabel()
-        item = event.GetItem()
-        old_label = self.dirtree.GetItemText(item)
+        item = event.GetIndex()
+        old_label = self.dirwin.GetItemText(item)
         if label == old_label or not label:
             return
-        old_path = self.get_file_path(item)
+        old_path = self.dirwin.GetItemPath(item)
         new_path = os.path.join(os.path.dirname(old_path), label)
         os.rename(old_path, new_path)
+        self.dirwin.UpdateData(item, label)
 
     def SetRootDir(self, root_dir=None):
         if not root_dir:
-            root_dir = self.get_file_path(self.dirtree.GetRootItem())
+            root_dir = self.dirwin.GetItemPath(self.dirwin.GetRootItem())
         pattern = self.search.GetValue()
-        self.dirtree.SetRootDir(root_dir, pattern=pattern, show_hidden=self.showHidden)
+        self.dirwin.SetRootDir(root_dir, pattern=pattern, show_hidden=self.showHidden)
         if self.history_index + 1 < len(self.history) and root_dir == self.history[self.history_index+1]:
             self.history_index += 1
         elif self.history_index - 1 >= 0 and root_dir == self.history[self.history_index-1]:

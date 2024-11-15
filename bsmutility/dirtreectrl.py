@@ -31,8 +31,10 @@ import os
 import platform
 import stat
 import traceback
+import datetime
 import fnmatch
 import wx
+from .findlistctrl import ListCtrlBase
 
 
 def is_hidden(filepath):
@@ -52,22 +54,11 @@ class Directory(object):
     def __init__(self, directory=''):
         self.directory = directory
 
+class DirMixin:
+    """helper class to handle files/folders in a folder"""
+    def __init__(self):
 
-class DirTreeCtrl(wx.TreeCtrl):
-    """A wx.TreeCtrl that is used for displaying directory structures.
-    Virtually handles paths to help with memory management.
-    """
-    def __init__(self, parent, *args, **kwds):
-        """Initializes the tree and binds some events we need for
-        making this dynamically load its data."""
-        wx.TreeCtrl.__init__(self, parent, *args, **kwds)
-
-        # bind events
-        self.Bind(wx.EVT_TREE_ITEM_EXPANDING, self.TreeItemExpanding)
-        self.Bind(wx.EVT_TREE_ITEM_COLLAPSING, self.TreeItemCollapsing)
-
-        # option to delete node items from tree when node is collapsed
-        self.DELETEONCOLLAPSE = False
+        self.rootdir = ""
 
         # some hack-ish code here to deal with imagelists
         self.iconentries = {}
@@ -90,13 +81,7 @@ class DirTreeCtrl(wx.TreeCtrl):
         bmp = wx.ArtProvider.GetBitmap(wx.ART_NORMAL_FILE, wx.ART_OTHER, (int(16*scale), int(16*scale)))
         bmp.SetScaleFactor(scale)
         self.addBitmap(bmp, 'default')
-        self.SetImageList(self.imagelist)
-        # # you should replace this with your own code or put the relevant
-        # # images in the correct path # set directory image
-        # self.addIcon('images/folder.png', wx.BITMAP_TYPE_PNG, 'directory')
-        #
-        # # set default image
-        # self.addIcon('images/page.png', wx.BITMAP_TYPE_PNG, 'default')
+
     def addBitmap(self, bitmap, name):
         try:
             if bitmap:
@@ -121,94 +106,73 @@ class DirTreeCtrl(wx.TreeCtrl):
         except:
             traceback.print_exc()
 
-    def SetDeleteOnCollapse(self, selection):
-        """Sets the tree option to delete leaf items when the node is
-        collapsed. Will slow down the tree slightly but will probably save memory."""
-        if isinstance(selection, bool):
-            self.DELETEONCOLLAPSE = selection
+    def GetRootDir(self):
+        return self.rootdir
+
+    def GetItemPath(self, item):
+        filename = self.GetItemText(item)
+        rootdir = self.GetRootDir()
+        return os.path.join(rootdir, filename)
 
     def SetRootDir(self, directory, pattern=None, show_hidden=True):
-        """Sets the root directory for the tree. Throws an exception
-        if the directory is invalid.
-        @param directory: directory to load
-        """
-
         # check if directory exists and is a directory
         if not os.path.isdir(directory):
             raise Exception("%s is not a valid directory" % directory)
 
-        # delete existing root, if any
-        self.DeleteAllItems()
+        self.rootdir = directory
+        self.LoadPath(directory, pattern=pattern, show_hidden=show_hidden)
 
-        # add directory as root
-        root = self.AddRoot(directory)
-        self.SetItemData(root, Directory(directory))
-        self.SetItemImage(root, self.iconentries['directory'],
-                          wx.TreeItemIcon_Normal)
-        self.SetItemImage(root, self.iconentries['directoryopen'],
-                          wx.TreeItemIcon_Expanded)
-        #self.Expand(root)
-        # load items
-        self._loadDir(root, directory, pattern=pattern, show_hidden=show_hidden)
+    def GetPathInfo(self, filepath):
+        name = os.path.basename(filepath)
+        return [name]
 
-    def _loadDir(self, item, directory, pattern=None, show_hidden=True):
+    def LoadPath(self, directory, pattern=None, show_hidden=True):
         """Private function that gets called to load the file list
         for the given directory and append the items to the tree.
         Throws an exception if the directory is invalid.
 
         @note: does not add items if the node already has children"""
-
         # check if directory exists and is a directory
         if not os.path.isdir(directory):
-            raise Exception("%s is not a valid directory" % directory)
+            raise ValueError(f"{directory} is not a valid directory")
 
-        # check if node already has children
-        if self.GetChildrenCount(item) == 0:
-            # get files in directory
-            try:
-                files = os.listdir(directory)
-            except:
-                traceback.print_exc()
-                return
-            files_all = []
-            folders_all = []
-            # add directory nodes to tree
-            for f in files:
-                # if directory, tell tree it has children
-                if os.path.isdir(os.path.join(directory, f)):
-                    folders_all.append(f)
-                else:
-                    files_all.append(f)
-            if pattern:
-                files_all = fnmatch.filter(files_all, pattern)
-            if not show_hidden:
-                folders_all = [f for f in folders_all if not is_hidden(f)]
-                files_all = [f for f in files_all if not is_hidden(f)]
+        # get files in directory
+        try:
+            files = os.listdir(directory)
+        except:
+            traceback.print_exc()
+            return []
+        files_all = []
+        folders_all = []
+        # add directory nodes to tree
+        for f in files:
+            # if directory, tell tree it has children
+            if os.path.isdir(os.path.join(directory, f)):
+                folders_all.append(f)
+            else:
+                files_all.append(f)
+        if pattern:
+            files_all = fnmatch.filter(files_all, pattern)
+        if not show_hidden:
+            folders_all = [f for f in folders_all if not is_hidden(f)]
+            files_all = [f for f in files_all if not is_hidden(f)]
 
-            folders_all.sort(key=lambda y: y.lower())
-            files_all.sort(key=lambda y: y.lower())
-            for f in folders_all:
-                # process the file extension to build image list
-                imagekey = self.processFileExtension(os.path.join(
-                    directory, f))
+        data = []
+        folders_all.sort(key=lambda y: y.lower())
+        files_all.sort(key=lambda y: y.lower())
+        for f in folders_all:
+            info = self.GetPathInfo(os.path.join(directory, f))
+            data.append(info + [self.iconentries['directory'], 0])
 
-                # add item to
-                child = self.AppendItem(item, f)
-                self.SetItemImage(child, self.iconentries['directory'],
-                                  wx.TreeItemIcon_Normal)
-                self.SetItemImage(child, self.iconentries['directoryopen'],
-                                  wx.TreeItemIcon_Expanded)
-                self.SetItemHasChildren(child, True)
+        # add file nodes to tree
+        for f in files_all:
+            # process the file extension to build image list
+            imagekey = self.processFileExtension(os.path.join(
+                directory, f))
 
-                # save item path for expanding later
-                self.SetItemData(child, Directory(os.path.join(directory, f)))
-
-            # add file nodes to tree
-            for f in files_all:
-                # process the file extension to build image list
-                imagekey = self.processFileExtension(os.path.join(
-                    directory, f))
-                self.AppendItem(item, f, image=imagekey)
+            info = self.GetPathInfo(os.path.join(directory, f))
+            data.append(info + [imagekey, 1])
+        return data
 
     def getFileExtension(self, filename):
         """Helper function for getting a file's extension"""
@@ -297,6 +261,71 @@ class DirTreeCtrl(wx.TreeCtrl):
         # if no key returned already, return default
         return self.iconentries['default']
 
+
+class DirTreeCtrl(wx.TreeCtrl, DirMixin):
+    """A wx.TreeCtrl that is used for displaying directory structures.
+    Virtually handles paths to help with memory management.
+    """
+    def __init__(self, parent, *args, **kwds):
+        """Initializes the tree and binds some events we need for
+        making this dynamically load its data."""
+        wx.TreeCtrl.__init__(self, parent, *args, **kwds)
+        DirMixin.__init__(self)
+
+        # bind events
+        self.Bind(wx.EVT_TREE_ITEM_EXPANDING, self.TreeItemExpanding)
+        self.Bind(wx.EVT_TREE_ITEM_COLLAPSING, self.TreeItemCollapsing)
+
+        # option to delete node items from tree when node is collapsed
+        self.DELETEONCOLLAPSE = False
+
+    def SetDeleteOnCollapse(self, selection):
+        """Sets the tree option to delete leaf items when the node is
+        collapsed. Will slow down the tree slightly but will probably save memory."""
+        if isinstance(selection, bool):
+            self.DELETEONCOLLAPSE = selection
+
+    def SetRootDir(self, directory, pattern=None, show_hidden=True):
+
+        if not os.path.isdir(directory):
+            raise ValueError(f"{directory} is not a valid directory")
+
+        self.rootdir = directory
+        # delete existing root, if any
+        self.DeleteAllItems()
+
+        # add directory as root
+        root = self.AddRoot(directory)
+        self.SetItemData(root, Directory(directory))
+        self.SetItemImage(root, self.iconentries['directory'],
+                          wx.TreeItemIcon_Normal)
+        self.SetItemImage(root, self.iconentries['directoryopen'],
+                          wx.TreeItemIcon_Expanded)
+
+        self.LoadDir(root, directory, pattern, show_hidden)
+
+    def LoadDir(self, item, directory, pattern=None, show_hidden=True):
+
+        data = self.LoadPath(directory, pattern, show_hidden)
+
+        # process the file extension to build image list
+        for d in data:
+            # populate the tree
+            if d[-1] == 0:
+                child = self.AppendItem(item, d[0])
+                # directory
+                self.SetItemImage(child, self.iconentries['directory'],
+                                  wx.TreeItemIcon_Normal)
+                self.SetItemImage(child, self.iconentries['directoryopen'],
+                                  wx.TreeItemIcon_Expanded)
+                self.SetItemHasChildren(child, True)
+
+                # save item path for expanding later
+                self.SetItemData(child, Directory(os.path.join(directory, d[0])))
+            else:
+                # process the file extension to build image list
+                self.AppendItem(item, d[0], image=d[-2])
+
     def TreeItemExpanding(self, event):
         """Called when a node is about to expand. Loads the node's
         files from the file system."""
@@ -305,9 +334,8 @@ class DirTreeCtrl(wx.TreeCtrl):
         # check if item has directory data
         if isinstance(self.GetItemData(item), Directory):
             d = self.GetItemData(item)
-            self._loadDir(item, d.directory)
+            self.LoadDir(item, d.directory)
         else:
-            # print 'no data found!'
             pass
 
         event.Skip()
@@ -324,3 +352,126 @@ class DirTreeCtrl(wx.TreeCtrl):
             self.DeleteChildren(item)
 
         event.Skip()
+
+# bytes pretty-printing
+UNITS_MAPPING = [
+    (1<<50, ' PB'),
+    (1<<40, ' TB'),
+    (1<<30, ' GB'),
+    (1<<20, ' MB'),
+    (1<<10, ' KB'),
+    (1, (' byte', ' bytes')),
+]
+
+
+def pretty_size(byte, units=None):
+    """Get human-readable file sizes.
+    simplified version of https://pypi.python.org/pypi/hurry.filesize/
+    """
+    if units is None:
+        units = UNITS_MAPPING
+    factor = None
+    suffix = None
+    for factor, suffix in units:
+        if byte >= factor:
+            break
+    if factor is None or suffix is None:
+        return str(byte) + ' byte'
+    amount = int(byte / factor)
+
+    if isinstance(suffix, tuple):
+        singular, multiple = suffix
+        if amount == 1:
+            suffix = singular
+        else:
+            suffix = multiple
+    return str(amount) + suffix
+
+class DirListCtrl(ListCtrlBase, DirMixin):
+    """
+    A wx.ListCtrl that is used for displaying directory structures.
+    Virtually handles paths to help with memory management.
+    """
+    def __init__(self, parent, *args, **kwds):
+        """Initializes the tree and binds some events we need for
+        making this dynamically load its data."""
+        ListCtrlBase.__init__(self, parent, *args, **kwds)
+        DirMixin.__init__(self)
+
+        self.EnableAlternateRowColours(False)
+
+        self.SetImageList(self.imagelist, wx.IMAGE_LIST_SMALL)
+
+    def BuildColumns(self):
+        self.InsertColumn(0, "Name", width=400)
+        self.InsertColumn(1, "Data modified", width=400)
+        self.InsertColumn(2, "Size", width=400)
+
+    def OnGetItemText(self, item, column):
+        if column < self.data_start_column:
+            return super().OnGetItemText()
+        if column == 1:
+            # time
+            mtime = datetime.datetime.fromtimestamp(self.data_shown[item][1])
+            mtime = mtime.strftime("%m/%d/%Y %H:%M:%S")
+            return mtime
+        elif column == 2:
+            # size:
+            if self.data_shown[item][-1] == 0:
+                # folder
+                return ""
+            size = self.data_shown[item][column]
+            return  pretty_size(size)
+        return self.data_shown[item][column]
+
+    def OnGetItemImage(self, item):
+        return self.data_shown[item][-2]
+
+    def FindText(self, start, end, text, flags=0):
+        direction = 1 if end > start else -1
+        for i in range(start, end+direction, direction):
+            m = self.data_shown[i][0]
+            if self.Search(m, text, flags):
+                return i
+
+        # not found
+        return -1
+
+    def SortBy(self, column, ascending):
+        self.data.sort(key=lambda x: x[column], reverse=not ascending)
+        self.data.sort(key=lambda x: x[-1])
+
+    def GetItemPath(self, item):
+        if isinstance(item, wx.ListItem):
+            item = item.GetId()
+        rootdir = self.GetRootDir()
+        if item == -1:
+            return rootdir
+        filename = self.GetItemText(item)
+        return os.path.join(rootdir, filename)
+
+    def GetPathInfo(self, filepath):
+        info = super().GetPathInfo(filepath)
+
+        mtime = os.path.getmtime(filepath)
+        info.append(mtime)
+        size = os.path.getsize(filepath)
+        info.append(size)
+
+        return info
+
+    def LoadPath(self, directory, pattern=None, show_hidden=True):
+        # check if directory exists and is a directory
+        self.data = super().LoadPath(directory, pattern, show_hidden)
+        self.Fill(self.pattern)
+
+    def Delete(self, item):
+        if isinstance(item, wx.ListItem):
+            item = item.GetId()
+
+        self.data.pop(item)
+        self.Fill(self.pattern)
+
+    def UpdateData(self, index, name):
+        self.data[index][0] = name
+        self.Fill(self.pattern)
