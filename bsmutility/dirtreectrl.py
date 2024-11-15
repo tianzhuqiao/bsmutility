@@ -415,6 +415,10 @@ class DirListCtrl(ListCtrlBase, DirMixin):
         self.SetImageList(self.imagelist, wx.IMAGE_LIST_SMALL)
         self.Bind(wx.EVT_LIST_COL_RIGHT_CLICK, self.OnColRightClick)
 
+    def OnRightClick(self, event):
+        # ignore the default right click menu
+        return
+
     def GetShownColumns(self):
         return self.columns_shown
 

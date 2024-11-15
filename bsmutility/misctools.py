@@ -574,9 +574,8 @@ class DirPanel(wx.Panel):
         self.Bind(EVT_AUIPATHBAR_CLICK, self.OnPathBarClick, self.addressbar)
 
         self.Bind(wx.EVT_TEXT, self.OnDoSearch, self.search)
-        self.Bind(wx.EVT_CONTEXT_MENU, self.OnRightClick, self.dirwin)
+        self.dirwin.Bind(wx.EVT_CONTEXT_MENU, self.OnRightClick)
 
-        self.dirwin.Bind(wx.EVT_LIST_ITEM_RIGHT_CLICK, self.OnRightClickItem)
         self.Bind(wx.EVT_LIST_END_LABEL_EDIT, self.OnRename, self.dirwin)
 
         self.Bind(wx.EVT_MENU, self.OnProcessEvent, id=wx.ID_OPEN)
@@ -780,6 +779,12 @@ class DirPanel(wx.Panel):
         self.SetRootDir()
 
     def OnRightClick(self, event):
+        item, _ = self.dirwin.HitTest(self.dirwin.ScreenToClient(event.GetPosition()))
+        if item >= 0:
+            # right click on an item
+            self.OnRightClickItem(item)
+            return
+
         self.active_items = [-1] # -1 is for rootdir
         menu = wx.Menu()
         menu.Append(wx.ID_NEW, "New Folder")
@@ -803,9 +808,8 @@ class DirPanel(wx.Panel):
         self.PopupMenu(menu)
         menu.Destroy()
 
-    def OnRightClickItem(self, event):
-        event.Veto()
-        self.dirwin.Select(event.GetIndex())
+    def OnRightClickItem(self, item):
+        self.dirwin.Select(item)
         self.active_items = self.dirwin.GetSelections()
         menu = wx.Menu()
         menu.Append(wx.ID_OPEN, "Open\tCtrl+Enter")
@@ -934,7 +938,7 @@ class DirPanel(wx.Panel):
         new_folder = os.path.join(root_dir, filename)
         if  os.path.exists(new_folder):
             msg = f"{filename} already exists. Please choose a different name."
-            dlg = wx.GenericMessageDialog(self, msg, title, style=wx.OK)
+            dlg = wx.MessageDialog(self, msg, title, style=wx.OK)
             dlg.ShowModal()
             dlg.Destroy()
             return
