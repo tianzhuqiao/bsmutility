@@ -35,7 +35,7 @@ CLR = {
 'green':     '#859900',
 }
 
-def EditorTheme(cls):
+class EditorThemeMixin:
     def GetTheme(self, theme='solarized-dark'):
         resp = dp.send('frame.get_config', group='theme', key=theme)
         themes = None
@@ -284,14 +284,12 @@ def EditorTheme(cls):
         self.StyleSetSpec(stc.STC_P_IDENTIFIER, s['identifier'])
 
 
-    setattr(cls, 'SetupColor', SetupColor)
-    setattr(cls, 'SetupColorPython', SetupColorPython)
-    setattr(cls, 'GetThemeColor', GetThemeColor)
-    setattr(cls, 'GetThemeFont', GetThemeFont)
-    setattr(cls, 'GetTheme', GetTheme)
-    return cls
+class EditorFindMixin:
 
-def EditorFind(cls):
+    ID_FIND_REPLACE = wx.NewIdRef()
+    ID_FIND_NEXT = wx.NewIdRef()
+    ID_FIND_PREV = wx.NewIdRef()
+
     def SetupFind(self):
         # find & replace dialog
         self.findDialog = None
@@ -456,28 +454,8 @@ def EditorFind(cls):
             self.findStr = findStr
         if self.findStr:
             self.doFind(self.findStr, False)
-    ID_FIND_REPLACE = wx.NewIdRef()
-    ID_FIND_NEXT = wx.NewIdRef()
-    ID_FIND_PREV = wx.NewIdRef()
-    setattr(cls, 'ID_FIND_REPLACE', ID_FIND_REPLACE)
-    setattr(cls, 'ID_FIND_NEXT', ID_FIND_NEXT)
-    setattr(cls, 'ID_FIND_PREV', ID_FIND_PREV)
-    setattr(cls, 'SetupFind', SetupFind)
-    setattr(cls, 'OnShowFindReplace', OnShowFindReplace)
-    setattr(cls, 'message', message)
-    setattr(cls, '_find_text', _find_text)
-    setattr(cls, 'doFind', doFind)
-    setattr(cls, 'OnFind', OnFind)
-    setattr(cls, 'OnFindClose', OnFindClose)
-    setattr(cls, 'OnReplace', OnReplace)
-    setattr(cls, 'OnReplaceAll', OnReplaceAll)
-    setattr(cls, 'OnFindNext', OnFindNext)
-    setattr(cls, 'OnFindPrev', OnFindPrev)
-    return cls
 
-@EditorFind
-@EditorTheme
-class EditorBase(wx.py.editwindow.EditWindow):
+class EditorBase(wx.py.editwindow.EditWindow, EditorFindMixin, EditorThemeMixin):
     ID_CUT = wx.NewIdRef()
     ID_COPY = wx.NewIdRef()
     ID_PASTE = wx.NewIdRef()
@@ -488,6 +466,8 @@ class EditorBase(wx.py.editwindow.EditWindow):
 
     def __init__(self, parent, style=wx.CLIP_CHILDREN | wx.BORDER_NONE):
         wx.py.editwindow.EditWindow.__init__(self, parent, style=style)
+        EditorFindMixin.__init__(self)
+        EditorThemeMixin.__init__(self)
 
         self.SetupEditor()
         # disable the auto-insert the call tip

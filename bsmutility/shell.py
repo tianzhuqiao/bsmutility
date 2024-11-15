@@ -13,7 +13,7 @@ import wx.py.dispatcher as dp
 from wx import stc
 from wx.py.pseudo import PseudoFile
 from .debugger import EngineDebugger
-from .editor_base import EditorTheme, EditorFind
+from .editor_base import EditorThemeMixin, EditorFindMixin
 from .shell_base import magic, aliasDict, sx, ls, cd, pwd, unescape_path
 from .utility import get_path_list
 
@@ -41,9 +41,7 @@ def _doc(command):
     else:
         _help(command)
 
-@EditorFind
-@EditorTheme
-class Shell(pyshell.Shell):
+class Shell(pyshell.Shell, EditorFindMixin, EditorThemeMixin):
     ID_COPY_PLUS = wx.NewIdRef()
     ID_PASTE_PLUS = wx.NewIdRef()
     ID_WRAP_MODE = wx.NewIdRef()
@@ -68,6 +66,8 @@ class Shell(pyshell.Shell):
         pyshell.Shell.__init__(self, parent, id, pos, size, style, introText,
                                locals, InterpClass, startupScript,
                                execStartupScript, useStockId=False, *args, **kwds)
+        EditorThemeMixin.__init__(self)
+        EditorFindMixin.__init__(self)
 
         theme = 'solarized-dark'
         resp = dp.send('frame.get_config', group='shell', key='theme')
