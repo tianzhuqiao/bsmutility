@@ -120,6 +120,8 @@ class DirMixin:
         if not os.path.isdir(directory):
             raise ValueError("%s is not a valid directory" % directory)
 
+        self.DeleteAllItems()
+
         self.rootdir = directory
         self.LoadPath(directory, pattern=pattern, show_hidden=show_hidden)
 
@@ -394,23 +396,29 @@ class DirListCtrl(ListCtrlBase, DirMixin):
     Virtually handles paths to help with memory management.
     """
 
+    ID_AUTO_COL_SIZE = wx.NewIdRef()
+    ID_AUTO_COL_SIZE_ALL = wx.NewIdRef()
+
     def __init__(self, parent, *args, **kwds):
         """Initializes the tree and binds some events we need for
         making this dynamically load its data."""
-        self.columns = [{'name': 'Name', 'visible': True, 'id': wx.NewIdRef(), 'optional': False, 'width': 400},
-                {'name': 'Data modified', 'visible': True, 'id': wx.NewIdRef(), 'optional': True, 'width': 250},
-                {'name': 'Data created', 'visible': False, 'id': wx.NewIdRef(), 'optional': True, 'width': 250},
-                {'name': 'Type', 'visible': False, 'id': wx.NewIdRef(), 'optional': True, 'width': 200},
-                {'name': 'Size', 'visible': True, 'id': wx.NewIdRef(), 'optional': True, 'width': 100}]
+        self.columns = [
+                {'name': 'Name', 'visible': True, 'id': wx.NewIdRef(), 'optional': False, 'width': 400, 'format': wx.LIST_FORMAT_LEFT},
+                {'name': 'Data modified', 'visible': True, 'id': wx.NewIdRef(), 'optional': True, 'width': 250, 'format': wx.LIST_FORMAT_LEFT},
+                {'name': 'Data created', 'visible': False, 'id': wx.NewIdRef(), 'optional': True, 'width': 250, 'format': wx.LIST_FORMAT_LEFT},
+                {'name': 'Type', 'visible': False, 'id': wx.NewIdRef(), 'optional': True, 'width': 200, 'format': wx.LIST_FORMAT_LEFT},
+                {'name': 'Size', 'visible': True, 'id': wx.NewIdRef(), 'optional': True, 'width': 100, 'format': wx.LIST_FORMAT_RIGHT}
+                ]
         self.columns_shown = list(range(len(self.columns)))
 
         ListCtrlBase.__init__(self, parent, *args, **kwds)
         DirMixin.__init__(self)
 
-        if platform.system() == 'Windows':
-            # Windows
-            self.EnableAlternateRowColours(False)
-            self.ExtendRulesAndAlternateColour(False)
+        # disable last column auto width
+        self.EnableAutoWidth(False)
+        # disable alternate row colour
+        self.EnableAlternateRowColours(False)
+        self.ExtendRulesAndAlternateColour(False)
 
         self.SetImageList(self.imagelist, wx.IMAGE_LIST_SMALL)
         self.Bind(wx.EVT_LIST_COL_RIGHT_CLICK, self.OnColRightClick)
@@ -433,19 +441,31 @@ class DirListCtrl(ListCtrlBase, DirMixin):
 
     def OnColRightClick(self, event):
         menu = wx.Menu()
+
+        menu.Append(self.ID_AUTO_COL_SIZE, 'Size columns to Fit')
+        menu.Append(self.ID_AUTO_COL_SIZE_ALL, 'Size All columns to Fit')
+        menu.AppendSeparator()
         for col in self.columns:
             item = menu.AppendCheckItem(col['id'], col['name'])
             item.Check(col['visible'])
             item.Enable(col['optional'])
+
         cmd = self.GetPopupMenuSelectionFromUser(menu)
+
         if cmd == wx.ID_NONE:
             return
-        for col in self.columns:
-            if cmd == col['id']:
-                col['visible'] = not col['visible']
+        if cmd == self.ID_AUTO_COL_SIZE:
+            self.SetColumnWidth(event.GetColumn(), wx.LIST_AUTOSIZE)
+        elif cmd == self.ID_AUTO_COL_SIZE_ALL:
+            for col in range(self.GetColumnCount()):
+                self.SetColumnWidth(col, wx.LIST_AUTOSIZE)
+        else:
+            for col in self.columns:
+                if cmd == col['id']:
+                    col['visible'] = not col['visible']
 
-        self.BuildColumns()
-        self.Fill(self.pattern)
+            self.BuildColumns()
+            self.Fill(self.pattern)
 
     def BuildColumns(self):
         self.DeleteAllColumns()
@@ -454,7 +474,7 @@ class DirListCtrl(ListCtrlBase, DirMixin):
             if not col['visible']:
                 continue
             self.columns_shown.append(idx)
-            self.AppendColumn(col['name'], width=col['width'])
+            self.AppendColumn(col['name'], format=col['format'], width=col['width'])
 
     def OnGetItemText(self, item, column):
         if column < self.data_start_column:

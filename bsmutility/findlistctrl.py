@@ -258,6 +258,16 @@ class FindListCtrl(wx.ListCtrl):
 
 class ListCtrlAutoWidthMixin2(ListCtrlAutoWidthMixin):
 
+    def __init__(self):
+        super().__init__()
+        self.enable_auto_width = True
+
+    def EnableAutoWidth(self, enable):
+        self.enable_auto_width = enable
+
+    def IsEnableAutoWidth(self):
+        return self.enable_auto_width
+
     def _doResize(self):
         """ Resize the last column as appropriate.
 
@@ -271,7 +281,7 @@ class ListCtrlAutoWidthMixin2(ListCtrlAutoWidthMixin):
             _doResize() don't cause the last column to size itself too large.
         """
 
-        if not self:  # avoid a PyDeadObject error
+        if not self or not self.IsEnableAutoWidth():  # avoid a PyDeadObject error
             return
 
         if self.GetSize().height < 32:
@@ -315,9 +325,9 @@ class ListCtrlAutoWidthMixin2(ListCtrlAutoWidthMixin):
 
 
 class ListCtrlBase(FindListCtrl, ListCtrlAutoWidthMixin2):
-    def __init__(self, parent, style=wx.LC_REPORT|wx.LC_HRULES|wx.LC_VRULES|wx.LC_VIRTUAL):
+    def __init__(self, parent, style=wx.LC_REPORT|wx.LC_VIRTUAL):
         FindListCtrl.__init__(self, parent, style=style)
-        ListCtrlAutoWidthMixin.__init__(self)
+        ListCtrlAutoWidthMixin2.__init__(self)
         self.EnableAlternateRowColours()
         self.ExtendRulesAndAlternateColour()
 
