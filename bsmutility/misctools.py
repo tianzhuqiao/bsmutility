@@ -6,7 +6,7 @@ import sys
 import re
 import shutil
 import platform
-import pathlib
+from pathlib import Path
 import six
 import wx
 import wx.py.dispatcher as dp
@@ -485,6 +485,7 @@ class DirPanel(wx.Panel):
 
     ID_GOTO_PARENT = wx.NewIdRef()
     ID_GOTO_HOME = wx.NewIdRef()
+    ID_COPY_NAME = wx.NewIdRef()
     ID_COPY_PATH = wx.NewIdRef()
     ID_COPY_PATH_REL = wx.NewIdRef()
     ID_COPY_PATH_POSIX = wx.NewIdRef()
@@ -583,6 +584,7 @@ class DirPanel(wx.Panel):
         self.Bind(wx.EVT_MENU, self.OnProcessEvent, id=wx.ID_CUT)
         self.Bind(wx.EVT_MENU, self.OnProcessEvent, id=wx.ID_DELETE)
         self.Bind(wx.EVT_MENU, self.OnProcessEvent, id=self.ID_OPEN_IN_FINDER)
+        self.Bind(wx.EVT_MENU, self.OnProcessEvent, id=self.ID_COPY_NAME)
         self.Bind(wx.EVT_MENU, self.OnProcessEvent, id=self.ID_COPY_PATH)
         self.Bind(wx.EVT_MENU, self.OnProcessEvent, id=self.ID_COPY_PATH_REL)
         self.Bind(wx.EVT_MENU, self.OnProcessEvent, id=self.ID_COPY_PATH_POSIX)
@@ -599,6 +601,7 @@ class DirPanel(wx.Panel):
             #(wx.ACCEL_CTRL, wx.WXK_RETURN, wx.ID_OPEN),
             (wx.ACCEL_ALT | wx.ACCEL_CTRL, ord('R'), self.ID_OPEN_IN_FINDER),
             (wx.ACCEL_CTRL, ord('C'), wx.ID_COPY),
+            (wx.ACCEL_ALT | wx.ACCEL_CTRL, ord('N'), self.ID_COPY_NAME),
             (wx.ACCEL_ALT | wx.ACCEL_CTRL, ord('C'), self.ID_COPY_PATH),
             (wx.ACCEL_ALT | wx.ACCEL_SHIFT | wx.ACCEL_CTRL, ord('C'), self.ID_COPY_PATH_REL),
             (wx.ACCEL_SHIFT, wx.WXK_RETURN, self.ID_RENAME),
@@ -760,7 +763,7 @@ class DirPanel(wx.Panel):
     def OnGotoParent(self, event):
         root = self.dirwin.GetRootDir()
         path = os.path.abspath(os.path.join(root, os.path.pardir))
-        if os.path.normpath(path) == os.path.normpath(root):
+        if path == os.path.abspath(root):
             return
         self.doGoToAddress(path)
 
@@ -787,7 +790,7 @@ class DirPanel(wx.Panel):
 
         self.active_items = [-1] # -1 is for rootdir
         menu = wx.Menu()
-        menu.Append(wx.ID_NEW, "New Folder")
+        menu.Append(wx.ID_NEW, "New folder")
         manager = get_file_finder_name()
         menu.Append(self.ID_OPEN_IN_FINDER, f"Reveal in {manager}\tAlt+Ctrl+R")
         if wx.TheClipboard.Open():
@@ -798,12 +801,13 @@ class DirPanel(wx.Panel):
             wx.TheClipboard.Close()
 
         menu.AppendSeparator()
-        menu.Append(self.ID_COPY_PATH, "Copy Path\tAlt+Ctrl+C")
-        menu.Append(self.ID_COPY_PATH_REL, "Copy Relative Path\tAlt+Shift+Ctrl+C")
+        menu.Append(self.ID_COPY_NAME, "Copy name\tAlt+Ctrl+N")
+        menu.Append(self.ID_COPY_PATH, "Copy path\tAlt+Ctrl+C")
+        menu.Append(self.ID_COPY_PATH_REL, "Copy relative path\tAlt+Shift+Ctrl+C")
 
         if platform.system() == 'Windows':
-            menu.Append(self.ID_COPY_PATH_POSIX, 'Copy Path with forward slashes (/)')
-            menu.Append(self.ID_COPY_PATH_REL_POSIX, 'Copy Relative Path with forward slashes (/)')
+            menu.Append(self.ID_COPY_PATH_POSIX, 'Copy path with forward slashes (/)')
+            menu.Append(self.ID_COPY_PATH_REL_POSIX, 'Copy relative path with forward slashes (/)')
 
         self.PopupMenu(menu)
         menu.Destroy()
@@ -823,12 +827,13 @@ class DirPanel(wx.Panel):
                 menu.Append(self.ID_PASTE_FOLDER, "Paste\tCtrl+V")
             wx.TheClipboard.Close()
         menu.AppendSeparator()
-        menu.Append(self.ID_COPY_PATH, "Copy Path\tAlt+Ctrl+C")
-        menu.Append(self.ID_COPY_PATH_REL, "Copy Relative Path\tAlt+Shift+Ctrl+C")
+        menu.Append(self.ID_COPY_NAME, "Copy name\tAlt+Ctrl+N")
+        menu.Append(self.ID_COPY_PATH, "Copy path\tAlt+Ctrl+C")
+        menu.Append(self.ID_COPY_PATH_REL, "Copy relative path\tAlt+Shift+Ctrl+C")
 
         if platform.system() == 'Windows':
-            menu.Append(self.ID_COPY_PATH_POSIX, 'Copy Path with forward slashes (/)')
-            menu.Append(self.ID_COPY_PATH_REL_POSIX, 'Copy Relative Path with forward slashes (/)')
+            menu.Append(self.ID_COPY_PATH_POSIX, 'Copy path with forward slashes (/)')
+            menu.Append(self.ID_COPY_PATH_REL_POSIX, 'Copy relative path with forward slashes (/)')
 
         menu.AppendSeparator()
         menu.Append(self.ID_RENAME, "Rename\tReturn")
@@ -891,11 +896,12 @@ class DirPanel(wx.Panel):
             self.delete(items)
         elif evtId == wx.ID_CLEAR:
             self.tree.DeleteAllItems()
-        elif evtId in (self.ID_COPY_PATH, self.ID_COPY_PATH_REL,
+        elif evtId in (self.ID_COPY_NAME, self.ID_COPY_PATH, self.ID_COPY_PATH_REL,
                        self.ID_COPY_PATH_POSIX, self.ID_COPY_PATH_REL_POSIX):
             self.copy_path(items,
                            relative=evtId in [self.ID_COPY_PATH_REL, self.ID_COPY_PATH_REL_POSIX],
-                           posix=evtId in [self.ID_COPY_PATH_POSIX, self.ID_COPY_PATH_REL_POSIX])
+                           posix=evtId in [self.ID_COPY_PATH_POSIX, self.ID_COPY_PATH_REL_POSIX],
+                           basename=evtId in [self.ID_COPY_NAME])
         elif evtId == self.ID_RENAME:
             if items:
                 # only edit the first item
@@ -953,14 +959,16 @@ class DirPanel(wx.Panel):
                 self.dirwin.EnsureVisible(item)
                 break
 
-    def copy_path(self, items, relative=False, posix=False):
+    def copy_path(self, items, relative=False, posix=False, basename=False):
         file_path = []
         for item in items:
             path = self.dirwin.GetItemPath(item)
             if relative:
                 path = os.path.relpath(path, os.getcwd())
             if posix:
-                path = pathlib.PureWindowsPath(path).as_posix()
+                path = Path(path).as_posix()
+            if basename:
+                path = Path(path).name
             file_path.append(path)
 
         clipData = wx.TextDataObject()
