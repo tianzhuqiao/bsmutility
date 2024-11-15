@@ -256,7 +256,65 @@ class FindListCtrl(wx.ListCtrl):
 
         return pattern in src
 
-class ListCtrlBase(FindListCtrl, ListCtrlAutoWidthMixin):
+class ListCtrlAutoWidthMixin2(ListCtrlAutoWidthMixin):
+
+    def _doResize(self):
+        """ Resize the last column as appropriate.
+
+            If the list's columns are too wide to fit within the window, we use
+            a horizontal scrollbar.  Otherwise, we expand the right-most column
+            to take up the remaining free space in the list.
+
+            We remember the current size of the last column, before resizing,
+            as the preferred minimum width if we haven't previously been given
+            or calculated a minimum width.  This ensure that repeated calls to
+            _doResize() don't cause the last column to size itself too large.
+        """
+
+        if not self:  # avoid a PyDeadObject error
+            return
+
+        if self.GetSize().height < 32:
+            return  # avoid an endless update bug when the height is small.
+
+        numCols = self.GetColumnCount()
+        if numCols == 0: return # Nothing to resize.
+
+        # on windows, user can reorder the columns (e.g., by dragging), so
+        # make sure the resizeCol is the one currently at that location
+        if(self._resizeColStyle == "LAST"):
+            resizeCol = self.GetColumnsOrder()[-1] + 1
+        else:
+            resizeCol = self.GetColumnsOrder()[self._resizeCol-1] + 1
+
+        resizeCol = max(1, resizeCol)
+
+        if self._resizeColMinWidth is None:
+            self._resizeColMinWidth = self.GetColumnWidth(resizeCol - 1)
+
+        # Get total width
+        listWidth = self.GetClientSize().width
+
+        totColWidth = 0 # Width of all columns except last one.
+        for col in range(numCols):
+            if col != (resizeCol-1):
+                totColWidth = totColWidth + self.GetColumnWidth(col)
+
+        resizeColWidth = self.GetColumnWidth(resizeCol - 1)
+
+        if totColWidth + self._resizeColMinWidth > listWidth:
+            # We haven't got the width to show the last column at its minimum
+            # width -> set it to its minimum width and allow the horizontal
+            # scrollbar to show.
+            self.SetColumnWidth(resizeCol-1, self._resizeColMinWidth)
+            return
+
+        # Resize the last column to take up the remaining available space.
+
+        self.SetColumnWidth(resizeCol-1, listWidth - totColWidth)
+
+
+class ListCtrlBase(FindListCtrl, ListCtrlAutoWidthMixin2):
     def __init__(self, parent, style=wx.LC_REPORT|wx.LC_HRULES|wx.LC_VRULES|wx.LC_VIRTUAL):
         FindListCtrl.__init__(self, parent, style=style)
         ListCtrlAutoWidthMixin.__init__(self)
@@ -328,3 +386,23 @@ class ListCtrlBase(FindListCtrl, ListCtrlAutoWidthMixin):
             active_items.append(item)
             item = self.GetNextSelected(item)
         return active_items
+
+    def GetColumnOrder(self, col):
+        if self.HasColumnOrderSupport():
+            return super().GetColumnOrder(col)
+        return col
+
+    def GetColumnIndexFromOrder(self, pos):
+        if self.HasColumnOrderSupport():
+            return super().GetColumnIndexFromOrder(pos)
+        return pos
+
+    def GetColumnsOrder(self):
+        if self.HasColumnOrderSupport():
+            return super().GetColumnsOrder()
+        return list(range(self.GetColumnCount()))
+
+    def SetColumnsOrder(self, orders):
+        if self.HasColumnOrderSupport():
+            return super().SetColumnsOrder(orders)
+        return False

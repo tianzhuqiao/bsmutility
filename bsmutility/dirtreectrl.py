@@ -30,6 +30,7 @@
 import os
 import platform
 import stat
+from pathlib import Path
 import traceback
 import datetime
 import fnmatch
@@ -117,7 +118,7 @@ class DirMixin:
     def SetRootDir(self, directory, pattern=None, show_hidden=True):
         # check if directory exists and is a directory
         if not os.path.isdir(directory):
-            raise Exception("%s is not a valid directory" % directory)
+            raise ValueError("%s is not a valid directory" % directory)
 
         self.rootdir = directory
         self.LoadPath(directory, pattern=pattern, show_hidden=show_hidden)
@@ -392,30 +393,76 @@ class DirListCtrl(ListCtrlBase, DirMixin):
     A wx.ListCtrl that is used for displaying directory structures.
     Virtually handles paths to help with memory management.
     """
+
     def __init__(self, parent, *args, **kwds):
         """Initializes the tree and binds some events we need for
         making this dynamically load its data."""
+        self.columns = [{'name': 'Name', 'visible': True, 'id': wx.NewIdRef(), 'optional': False, 'width': 400},
+                {'name': 'Data modified', 'visible': True, 'id': wx.NewIdRef(), 'optional': True, 'width': 250},
+                {'name': 'Data created', 'visible': False, 'id': wx.NewIdRef(), 'optional': True, 'width': 250},
+                {'name': 'Type', 'visible': False, 'id': wx.NewIdRef(), 'optional': True, 'width': 200},
+                {'name': 'Size', 'visible': True, 'id': wx.NewIdRef(), 'optional': True, 'width': 100}]
+        self.columns_shown = list(range(len(self.columns)))
+
         ListCtrlBase.__init__(self, parent, *args, **kwds)
         DirMixin.__init__(self)
 
-        self.EnableAlternateRowColours(False)
+        if platform.system() == 'Windows':
+            # Windows
+            self.EnableAlternateRowColours(False)
+            self.ExtendRulesAndAlternateColour(False)
 
         self.SetImageList(self.imagelist, wx.IMAGE_LIST_SMALL)
+        self.Bind(wx.EVT_LIST_COL_RIGHT_CLICK, self.OnColRightClick)
+
+    def GetShownColumns(self):
+        return self.columns_shown
+
+    def SetShowColumns(self, cols):
+        for idx, col in enumerate(self.columns):
+            if not col['optional']:
+                continue
+            col['visible'] = idx in cols
+
+        self.BuildColumns()
+        self.Fill(self.pattern)
+
+    def OnColRightClick(self, event):
+        menu = wx.Menu()
+        for col in self.columns:
+            item = menu.AppendCheckItem(col['id'], col['name'])
+            item.Check(col['visible'])
+            item.Enable(col['optional'])
+        cmd = self.GetPopupMenuSelectionFromUser(menu)
+        if cmd == wx.ID_NONE:
+            return
+        for col in self.columns:
+            if cmd == col['id']:
+                col['visible'] = not col['visible']
+
+        self.BuildColumns()
+        self.Fill(self.pattern)
 
     def BuildColumns(self):
-        self.InsertColumn(0, "Name", width=400)
-        self.InsertColumn(1, "Data modified", width=400)
-        self.InsertColumn(2, "Size", width=400)
+        self.DeleteAllColumns()
+        self.columns_shown = []
+        for idx, col in enumerate(self.columns):
+            if not col['visible']:
+                continue
+            self.columns_shown.append(idx)
+            self.AppendColumn(col['name'], width=col['width'])
 
     def OnGetItemText(self, item, column):
         if column < self.data_start_column:
             return super().OnGetItemText()
-        if column == 1:
-            # time
-            mtime = datetime.datetime.fromtimestamp(self.data_shown[item][1])
+        column = self.columns_shown[column]
+        column_name = self.columns[column]['name']
+        if column_name in ['Data modified', 'Data created']:
+            # modified/create time
+            mtime = datetime.datetime.fromtimestamp(self.data_shown[item][column])
             mtime = mtime.strftime("%m/%d/%Y %H:%M:%S")
             return mtime
-        elif column == 2:
+        elif column_name == 'Size':
             # size:
             if self.data_shown[item][-1] == 0:
                 # folder
@@ -438,6 +485,7 @@ class DirListCtrl(ListCtrlBase, DirMixin):
         return -1
 
     def SortBy(self, column, ascending):
+        column = self.columns_shown[column]
         self.data.sort(key=lambda x: x[column], reverse=not ascending)
         self.data.sort(key=lambda x: x[-1])
 
@@ -452,12 +500,15 @@ class DirListCtrl(ListCtrlBase, DirMixin):
 
     def GetPathInfo(self, filepath):
         info = super().GetPathInfo(filepath)
-
-        mtime = os.path.getmtime(filepath)
-        info.append(mtime)
-        size = os.path.getsize(filepath)
-        info.append(size)
-
+        p = Path(filepath)
+        info.append(p.stat().st_mtime)
+        info.append(p.stat().st_ctime)
+        if p.is_dir():
+            ext = "Folder"
+        else:
+            ext = p.suffix
+        info.append(ext)
+        info.append(p.stat().st_size)
         return info
 
     def LoadPath(self, directory, pattern=None, show_hidden=True):

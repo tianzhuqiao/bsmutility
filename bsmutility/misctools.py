@@ -638,6 +638,14 @@ class DirPanel(wx.Panel):
         if resp and resp[0][1] is not None:
             path = resp[0][1]
 
+        resp = dp.send('frame.get_config', group='dirpanel', key='columns_shown')
+        if resp and resp[0][1] is not None:
+            self.dirwin.SetShowColumns(resp[0][1])
+
+        resp = dp.send('frame.get_config', group='dirpanel', key='columns_order')
+        if resp and resp[0][1] is not None:
+            self.dirwin.SetColumnsOrder(resp[0][1])
+
         self.doGoToAddress(path)
 
     def SaveConfig(self):
@@ -647,6 +655,8 @@ class DirPanel(wx.Panel):
 
         dp.send('frame.set_config', group='dirpanel', path_active=self.addressbar.GetPath())
         dp.send('frame.set_config', group='dirpanel', path_list=self.addressbar.address.GetItems())
+        dp.send('frame.set_config', group='dirpanel', columns_shown=self.dirwin.GetShownColumns())
+        dp.send('frame.set_config', group='dirpanel', columns_order=self.dirwin.GetColumnsOrder())
 
     def OnMenuDropDown(self, event):
         menu = wx.Menu()
