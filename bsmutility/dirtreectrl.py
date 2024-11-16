@@ -403,11 +403,11 @@ class DirListCtrl(ListCtrlBase, DirMixin):
         """Initializes the tree and binds some events we need for
         making this dynamically load its data."""
         self.columns = [
-                {'name': 'Name', 'visible': True, 'id': wx.NewIdRef(), 'optional': False, 'width': 400, 'format': wx.LIST_FORMAT_LEFT},
-                {'name': 'Data modified', 'visible': True, 'id': wx.NewIdRef(), 'optional': True, 'width': 250, 'format': wx.LIST_FORMAT_LEFT},
-                {'name': 'Data created', 'visible': False, 'id': wx.NewIdRef(), 'optional': True, 'width': 250, 'format': wx.LIST_FORMAT_LEFT},
-                {'name': 'Type', 'visible': False, 'id': wx.NewIdRef(), 'optional': True, 'width': 200, 'format': wx.LIST_FORMAT_LEFT},
-                {'name': 'Size', 'visible': True, 'id': wx.NewIdRef(), 'optional': True, 'width': 100, 'format': wx.LIST_FORMAT_RIGHT}
+                {'name': 'Name', 'visible': True, 'id': wx.NewIdRef(), 'optional': False, 'min_width': 200, 'format': wx.LIST_FORMAT_LEFT},
+                {'name': 'Data modified', 'visible': True, 'id': wx.NewIdRef(), 'optional': True, 'min_width': 100, 'format': wx.LIST_FORMAT_LEFT},
+                {'name': 'Data created', 'visible': False, 'id': wx.NewIdRef(), 'optional': True, 'min_width': 100, 'format': wx.LIST_FORMAT_LEFT},
+                {'name': 'Type', 'visible': False, 'id': wx.NewIdRef(), 'optional': True, 'min_width': 60, 'format': wx.LIST_FORMAT_LEFT},
+                {'name': 'Size', 'visible': True, 'id': wx.NewIdRef(), 'optional': True, 'min_width': 60, 'format': wx.LIST_FORMAT_RIGHT}
                 ]
         self.columns_shown = list(range(len(self.columns)))
 
@@ -455,10 +455,9 @@ class DirListCtrl(ListCtrlBase, DirMixin):
         if cmd == wx.ID_NONE:
             return
         if cmd == self.ID_AUTO_COL_SIZE:
-            self.SetColumnWidth(event.GetColumn(), wx.LIST_AUTOSIZE)
+            self.AutoSizeColumns([event.GetColumn()])
         elif cmd == self.ID_AUTO_COL_SIZE_ALL:
-            for col in range(self.GetColumnCount()):
-                self.SetColumnWidth(col, wx.LIST_AUTOSIZE)
+            self.AutoSizeColumns()
         else:
             for col in self.columns:
                 if cmd == col['id']:
@@ -474,7 +473,7 @@ class DirListCtrl(ListCtrlBase, DirMixin):
             if not col['visible']:
                 continue
             self.columns_shown.append(idx)
-            self.AppendColumn(col['name'], format=col['format'], width=col['width'])
+            self.AppendColumn(col['name'], format=col['format'], width=col['min_width'])
 
     def OnGetItemText(self, item, column):
         if column < self.data_start_column:
@@ -539,6 +538,17 @@ class DirListCtrl(ListCtrlBase, DirMixin):
         # check if directory exists and is a directory
         self.data = super().LoadPath(directory, pattern, show_hidden)
         self.Fill(self.pattern)
+
+        self.AutoSizeColumns()
+
+    def AutoSizeColumns(self, columns=None):
+        if columns is None:
+            columns = range(self.GetColumnCount())
+        for col in columns:
+            self.SetColumnWidth(col, wx.LIST_AUTOSIZE)
+            column = self.columns_shown[col]
+            if self.GetColumnWidth(col) < self.columns[column]['min_width']:
+                self.SetColumnWidth(col, self.columns[column]['min_width'])
 
     def Delete(self, item):
         if isinstance(item, wx.ListItem):
