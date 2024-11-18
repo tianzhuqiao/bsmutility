@@ -4,20 +4,16 @@ import time
 import traceback
 import sys
 import re
-import shutil
-import platform
-from pathlib import Path
 import six
 import wx
 import wx.py.dispatcher as dp
 import wx.svg
 import aui2 as aui
-from .dirtreectrl import DirListCtrl
+from .dirtreectrl import DirListCtrl, EVT_DIR_OPEN, DirTreeCtrl, DirTreeList
 from .bsmxpm import backward_svg2, backward_gray_svg2, forward_svg2, \
                     forward_gray_svg2, up_svg, home_svg2, more_svg, refresh_svg
 from .autocomplete import AutocompleteTextCtrl
-from .utility import FastLoadTreeCtrl, svg_to_bitmap, open_file_with_default_app, \
-                     show_file_in_finder, get_file_finder_name, get_path_list, \
+from .utility import FastLoadTreeCtrl, svg_to_bitmap, get_path_list, \
                      unescape_path
 from .editor_base import EditorBase
 from .bsminterface import Interface
@@ -485,14 +481,6 @@ class DirPanel(wx.Panel):
 
     ID_GOTO_PARENT = wx.NewIdRef()
     ID_GOTO_HOME = wx.NewIdRef()
-    ID_COPY_NAME = wx.NewIdRef()
-    ID_COPY_PATH = wx.NewIdRef()
-    ID_COPY_PATH_REL = wx.NewIdRef()
-    ID_COPY_PATH_POSIX = wx.NewIdRef()
-    ID_COPY_PATH_REL_POSIX = wx.NewIdRef()
-    ID_OPEN_IN_FINDER = wx.NewIdRef()
-    ID_RENAME = wx.NewIdRef()
-    ID_PASTE_FOLDER = wx.NewIdRef()
     ID_MORE = wx.NewIdRef()
     ID_SHOW_HIDDEN = wx.NewIdRef()
     ID_SHOW_PATTERN_TOOLBAR = wx.NewIdRef()
@@ -538,7 +526,8 @@ class DirPanel(wx.Panel):
 
         self.addressbar = AuiPathBar(self, agwStyle=agwStyle | aui.AUI_TB_HORZ_TEXT)
 
-        self.dirwin = DirListCtrl(self, style=wx.LC_REPORT|wx.LC_VIRTUAL|wx.LC_EDIT_LABELS)
+        #self.dirwin = DirListCtrl(self, style=wx.LC_REPORT|wx.LC_VIRTUAL|wx.LC_EDIT_LABELS)
+        self.dirwin = DirTreeList(self)
 
         agwStyle = aui.AUI_TB_OVERFLOW | aui.AUI_TB_PLAIN_BACKGROUND
         self.tb2 = aui.AuiToolBar(self, agwStyle=agwStyle)
@@ -571,50 +560,24 @@ class DirPanel(wx.Panel):
         self.Bind(wx.EVT_TOOL, self.OnBack, id=wx.ID_BACKWARD)
         self.Bind(wx.EVT_TOOL, self.OnRefresh, id=wx.ID_REFRESH)
 
-        self.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self.OnItemActivated, self.dirwin)
+        self.Bind(EVT_DIR_OPEN, self.OnOpenPath, self.dirwin)
         self.Bind(EVT_AUIPATHBAR_CLICK, self.OnPathBarClick, self.addressbar)
 
         self.Bind(wx.EVT_TEXT, self.OnDoSearch, self.search)
-        self.dirwin.Bind(wx.EVT_CONTEXT_MENU, self.OnRightClick)
 
-        self.Bind(wx.EVT_LIST_END_LABEL_EDIT, self.OnRename, self.dirwin)
-
-        self.Bind(wx.EVT_MENU, self.OnProcessEvent, id=wx.ID_OPEN)
-        self.Bind(wx.EVT_MENU, self.OnProcessEvent, id=wx.ID_COPY)
-        self.Bind(wx.EVT_MENU, self.OnProcessEvent, id=wx.ID_CUT)
-        self.Bind(wx.EVT_MENU, self.OnProcessEvent, id=wx.ID_DELETE)
-        self.Bind(wx.EVT_MENU, self.OnProcessEvent, id=self.ID_OPEN_IN_FINDER)
-        self.Bind(wx.EVT_MENU, self.OnProcessEvent, id=self.ID_COPY_NAME)
-        self.Bind(wx.EVT_MENU, self.OnProcessEvent, id=self.ID_COPY_PATH)
-        self.Bind(wx.EVT_MENU, self.OnProcessEvent, id=self.ID_COPY_PATH_REL)
-        self.Bind(wx.EVT_MENU, self.OnProcessEvent, id=self.ID_COPY_PATH_POSIX)
-        self.Bind(wx.EVT_MENU, self.OnProcessEvent, id=self.ID_COPY_PATH_REL_POSIX)
-        self.Bind(wx.EVT_MENU, self.OnProcessEvent, id=self.ID_RENAME)
-        self.Bind(wx.EVT_MENU, self.OnProcessEvent, id=wx.ID_NEW)
-        self.Bind(wx.EVT_MENU, self.OnProcessEvent, id=self.ID_PASTE_FOLDER)
         self.Bind(wx.EVT_UPDATE_UI, self.OnUpdateUI)
 
         dp.connect(receiver=self.GoTo, signal='dirpanel.goto')
-        self.active_items = []
 
-        accel = [
-            #(wx.ACCEL_CTRL, wx.WXK_RETURN, wx.ID_OPEN),
-            (wx.ACCEL_ALT | wx.ACCEL_CTRL, ord('R'), self.ID_OPEN_IN_FINDER),
-            (wx.ACCEL_CTRL, ord('C'), wx.ID_COPY),
-            (wx.ACCEL_ALT | wx.ACCEL_CTRL, ord('N'), self.ID_COPY_NAME),
-            (wx.ACCEL_ALT | wx.ACCEL_CTRL, ord('C'), self.ID_COPY_PATH),
-            (wx.ACCEL_ALT | wx.ACCEL_SHIFT | wx.ACCEL_CTRL, ord('C'), self.ID_COPY_PATH_REL),
-            (wx.ACCEL_SHIFT, wx.WXK_RETURN, self.ID_RENAME),
-            (wx.ACCEL_NORMAL, wx.WXK_DELETE, wx.ID_DELETE),
-        ]
-        self.accel = wx.AcceleratorTable(accel)
-        self.SetAcceleratorTable(self.accel)
 
     def completer(self, query):
 
         path, prefix = os.path.split(query)
         k = get_path_list(path=path, prefix=prefix, files=False)
         return k, k, len(prefix)
+
+    def OnOpenPath(self, event):
+        self.doGoToAddress(event.GetPath())
 
     def LoadConfig(self):
         resp = dp.send('frame.get_config', group='dirpanel', key='show_hidden')
@@ -640,13 +603,7 @@ class DirPanel(wx.Panel):
         if resp and resp[0][1] is not None:
             path = resp[0][1]
 
-        resp = dp.send('frame.get_config', group='dirpanel', key='columns_shown')
-        if resp and resp[0][1] is not None:
-            self.dirwin.SetShowColumns(resp[0][1])
-
-        resp = dp.send('frame.get_config', group='dirpanel', key='columns_order')
-        if resp and resp[0][1] is not None:
-            self.dirwin.SetColumnsOrder(resp[0][1])
+        self.dirwin.LoadConfig()
 
         self.doGoToAddress(path)
 
@@ -657,8 +614,8 @@ class DirPanel(wx.Panel):
 
         dp.send('frame.set_config', group='dirpanel', path_active=self.addressbar.GetPath())
         dp.send('frame.set_config', group='dirpanel', path_list=self.addressbar.address.GetItems())
-        dp.send('frame.set_config', group='dirpanel', columns_shown=self.dirwin.GetShownColumns())
-        dp.send('frame.set_config', group='dirpanel', columns_order=self.dirwin.GetColumnsOrder())
+
+        self.dirwin.SaveConfig()
 
     def OnMenuDropDown(self, event):
         menu = wx.Menu()
@@ -710,33 +667,6 @@ class DirPanel(wx.Panel):
         if show:
             dp.send(signal='frame.show_panel', panel=self, focus=True)
 
-    def open(self, items):
-        for item in items:
-            filepath = self.dirwin.GetItemPath(item)
-            if os.path.isdir(filepath):
-                self.doGoToAddress(filepath)
-                return
-            (_, ext) = os.path.splitext(filepath)
-
-            # try to open it with the main app
-            resp = dp.send(signal='frame.file_drop', filename=filepath)
-            if resp is not None:
-                for r in resp:
-                    if r[1] is not None:
-                        # succeed
-                        return
-            # if failed, try to open it with OS
-            open_file_with_default_app(filepath)
-
-    def open_in_finder(self, items):
-        for item in items:
-            filepath = self.dirwin.GetItemPath(item)
-            show_file_in_finder(filepath)
-
-    def OnItemActivated(self, event):
-        currentItem = event.GetIndex()
-        self.open([currentItem])
-
     def OnPathBarClick(self, event):
         path = event.GetPath()
         self.doGoToAddress(path)
@@ -780,213 +710,6 @@ class DirPanel(wx.Panel):
 
     def OnDoSearch(self, evt):
         self.SetRootDir()
-
-    def OnRightClick(self, event):
-        item, _ = self.dirwin.HitTest(self.dirwin.ScreenToClient(event.GetPosition()))
-        if item >= 0:
-            # right click on an item
-            self.OnRightClickItem(item)
-            return
-
-        self.active_items = [-1] # -1 is for rootdir
-        menu = wx.Menu()
-        menu.Append(wx.ID_NEW, "New folder")
-        manager = get_file_finder_name()
-        menu.Append(self.ID_OPEN_IN_FINDER, f"Reveal in {manager}\tAlt+Ctrl+R")
-        if wx.TheClipboard.Open():
-            data = wx.FileDataObject()
-            if wx.TheClipboard.GetData(data):
-                menu.AppendSeparator()
-                menu.Append(self.ID_PASTE_FOLDER, "Paste\tCtrl+V")
-            wx.TheClipboard.Close()
-
-        menu.AppendSeparator()
-        menu.Append(self.ID_COPY_NAME, "Copy name\tAlt+Ctrl+N")
-        menu.Append(self.ID_COPY_PATH, "Copy path\tAlt+Ctrl+C")
-        menu.Append(self.ID_COPY_PATH_REL, "Copy relative path\tAlt+Shift+Ctrl+C")
-
-        if platform.system() == 'Windows':
-            menu.Append(self.ID_COPY_PATH_POSIX, 'Copy path with forward slashes (/)')
-            menu.Append(self.ID_COPY_PATH_REL_POSIX, 'Copy relative path with forward slashes (/)')
-
-        self.PopupMenu(menu)
-        menu.Destroy()
-
-    def OnRightClickItem(self, item):
-        self.dirwin.Select(item)
-        self.active_items = self.dirwin.GetSelections()
-        menu = wx.Menu()
-        menu.Append(wx.ID_OPEN, "Open\tCtrl+Enter")
-        menu.Append(self.ID_OPEN_IN_FINDER, f"Reveal in {get_file_finder_name()}\tAlt+Ctrl+R")
-        menu.AppendSeparator()
-        #menu.Append(wx.ID_CUT, "Cut\tCtrl+X")
-        menu.Append(wx.ID_COPY, "Copy\tCtrl+C")
-        if wx.TheClipboard.Open():
-            data = wx.FileDataObject()
-            if wx.TheClipboard.GetData(data):
-                menu.Append(self.ID_PASTE_FOLDER, "Paste\tCtrl+V")
-            wx.TheClipboard.Close()
-        menu.AppendSeparator()
-        menu.Append(self.ID_COPY_NAME, "Copy name\tAlt+Ctrl+N")
-        menu.Append(self.ID_COPY_PATH, "Copy path\tAlt+Ctrl+C")
-        menu.Append(self.ID_COPY_PATH_REL, "Copy relative path\tAlt+Shift+Ctrl+C")
-
-        if platform.system() == 'Windows':
-            menu.Append(self.ID_COPY_PATH_POSIX, 'Copy path with forward slashes (/)')
-            menu.Append(self.ID_COPY_PATH_REL_POSIX, 'Copy relative path with forward slashes (/)')
-
-        menu.AppendSeparator()
-        menu.Append(self.ID_RENAME, "Rename\tReturn")
-        menu.Append(wx.ID_DELETE, "Delete\tDelete")
-        self.PopupMenu(menu)
-        menu.Destroy()
-
-    def copy(self, items):
-        data = wx.FileDataObject()
-        for item in items:
-            data.AddFile(self.dirwin.GetItemPath(item))
-
-        wx.TheClipboard.Open()
-        wx.TheClipboard.SetData(data)
-        wx.TheClipboard.Close()
-
-    def delete(self, items):
-        confirm = True
-        for item in items:
-            path = self.dirwin.GetItemPath(item)
-            if confirm:
-                _, basename = os.path.split(path)
-                msg = f'Do you want to delete "{basename}"?'
-                parent = self.GetTopLevelParent()
-                dlg = wx.RichMessageDialog(self, msg, parent.GetLabel(), wx.YES_NO)
-                if len(items) > 1:
-                    dlg.ShowCheckBox('Do not ask me again', False)
-                result = dlg.ShowModal() == wx.ID_YES
-                confirm = not dlg.IsCheckBoxChecked()
-                dlg.Destroy()
-                if not result:
-                    continue
-            try:
-                if os.path.isfile(path):
-                    os.remove(path)
-                elif os.path.isdir(path):
-                    shutil.rmtree(path)
-            except:
-                traceback.print_exc()
-                continue
-            self.dirwin.Delete(item)
-
-    def OnProcessEvent(self, event):
-        evtId = event.GetId()
-        if not self.active_items:
-            self.active_items = self.dirwin.GetSelections()
-        self.do_process(evtId, self.active_items)
-        self.active_items = []
-
-    def do_process(self, evtId, items):
-        if evtId == wx.ID_OPEN:
-            self.open(items)
-        elif evtId == self.ID_OPEN_IN_FINDER:
-            self.open_in_finder(items)
-        elif evtId in (wx.ID_COPY, wx.ID_CUT):
-            self.copy(items)
-            if evtId == wx.ID_CUT:
-                self.delete(items)
-        elif evtId == wx.ID_DELETE:
-            self.delete(items)
-        elif evtId == wx.ID_CLEAR:
-            self.tree.DeleteAllItems()
-        elif evtId in (self.ID_COPY_NAME, self.ID_COPY_PATH, self.ID_COPY_PATH_REL,
-                       self.ID_COPY_PATH_POSIX, self.ID_COPY_PATH_REL_POSIX):
-            self.copy_path(items,
-                           relative=evtId in [self.ID_COPY_PATH_REL, self.ID_COPY_PATH_REL_POSIX],
-                           posix=evtId in [self.ID_COPY_PATH_POSIX, self.ID_COPY_PATH_REL_POSIX],
-                           basename=evtId in [self.ID_COPY_NAME])
-        elif evtId == self.ID_RENAME:
-            if items:
-                # only edit the first item
-                self.dirwin.EditLabel(items[0])
-        elif evtId == wx.ID_NEW:
-            self.new_folder()
-        elif evtId == self.ID_PASTE_FOLDER:
-            if wx.TheClipboard.Open():
-                data = wx.FileDataObject()
-                files_copied = []
-                if len(items) == 1:
-                    item = items[0]
-                    if wx.TheClipboard.GetData(data):
-                        root_dir = self.dirwin.GetItemPath(item)
-                        for src in data.GetFilenames():
-                            des = os.path.join(root_dir, os.path.basename(src))
-                            if os.path.abspath(des) == os.path.abspath(src):
-                                # same location, ignore it
-                                continue
-                            shutil.copy2(src, des)
-                            files_copied.append(os.path.basename(src))
-                wx.TheClipboard.Close()
-                if files_copied:
-                    self.doGoToAddress(root_dir)
-                    for item in range(self.dirwin.GetItemCount()):
-                        text = self.dirwin.GetItemText(item)
-                        if text in files_copied:
-                            self.dirwin.Select(item)
-                            self.dirwin.EnsureVisible(item)
-
-    def new_folder(self):
-        title = self.GetTopLevelParent().GetLabel()
-        dlg = wx.TextEntryDialog(self, "Folder name", caption=title, value='')
-        dlg.ShowModal()
-        filename = dlg.GetValue()
-        dlg.Destroy()
-        if not filename:
-            return
-        root_dir = self.dirwin.GetRootDir()
-        new_folder = os.path.join(root_dir, filename)
-        if  os.path.exists(new_folder):
-            msg = f"{filename} already exists. Please choose a different name."
-            dlg = wx.MessageDialog(self, msg, title, style=wx.OK)
-            dlg.ShowModal()
-            dlg.Destroy()
-            return
-
-        os.makedirs(new_folder)
-        self.SetRootDir(root_dir)
-
-        for item in range(self.dirwin.GetItemCount()):
-            text = self.dirwin.GetItemText(item)
-            if os.path.normpath(text) == os.path.normpath(filename):
-                self.dirwin.Select(item)
-                self.dirwin.EnsureVisible(item)
-                break
-
-    def copy_path(self, items, relative=False, posix=False, basename=False):
-        file_path = []
-        for item in items:
-            path = self.dirwin.GetItemPath(item)
-            if relative:
-                path = os.path.relpath(path, os.getcwd())
-            if posix:
-                path = Path(path).as_posix()
-            if basename:
-                path = Path(path).name
-            file_path.append(path)
-
-        clipData = wx.TextDataObject()
-        clipData.SetText("\n".join(file_path))
-        wx.TheClipboard.Open()
-        wx.TheClipboard.SetData(clipData)
-        wx.TheClipboard.Close()
-
-    def OnRename(self, event):
-        label = event.GetLabel()
-        item = event.GetIndex()
-        old_label = self.dirwin.GetItemText(item)
-        if label == old_label or not label:
-            return
-        old_path = self.dirwin.GetItemPath(item)
-        new_path = os.path.join(os.path.dirname(old_path), label)
-        os.rename(old_path, new_path)
-        self.dirwin.UpdateData(item, label)
 
     def SetRootDir(self, root_dir=None):
         if not root_dir:
