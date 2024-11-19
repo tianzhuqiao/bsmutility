@@ -4,6 +4,7 @@ import wx
 from wx import stc
 import wx.py.dispatcher as dp
 from .utility import _dict
+from .findmixin import FindEditorMixin
 
 NUM_MARGIN = 0
 MARK_MARGIN = 1
@@ -284,178 +285,7 @@ class EditorThemeMixin:
         self.StyleSetSpec(stc.STC_P_IDENTIFIER, s['identifier'])
 
 
-class EditorFindMixin:
-
-    ID_FIND_REPLACE = wx.NewIdRef()
-    ID_FIND_NEXT = wx.NewIdRef()
-    ID_FIND_PREV = wx.NewIdRef()
-
-    def SetupFind(self):
-        # find & replace dialog
-        self.findDialog = None
-        self.findStr = ""
-        self.replaceStr = ""
-        self.findFlags = 1
-        self.stcFindFlags = 0
-        self.findDialogStyle = wx.FR_REPLACEDIALOG
-        self.wrapped = 0
-
-        self.Bind(wx.EVT_TOOL, self.OnShowFindReplace, id=self.ID_FIND_REPLACE)
-        self.Bind(wx.EVT_TOOL, self.OnFindNext, id=self.ID_FIND_NEXT)
-        self.Bind(wx.EVT_TOOL, self.OnFindPrev, id=self.ID_FIND_PREV)
-
-        accel = [
-            (wx.ACCEL_CTRL, ord('F'), self.ID_FIND_REPLACE),
-            (wx.ACCEL_SHIFT, wx.WXK_F3, self.ID_FIND_PREV),
-            (wx.ACCEL_CTRL, ord('H'), self.ID_FIND_REPLACE),
-            (wx.ACCEL_RAW_CTRL, ord('H'), self.ID_FIND_REPLACE),
-        ]
-        self.accel = wx.AcceleratorTable(accel)
-        self.SetAcceleratorTable(self.accel)
-
-    def OnShowFindReplace(self, event):
-        """Find and Replace dialog and action."""
-        # find string
-        findStr = self.GetSelectedText()
-        if findStr and self.findDialog:
-            self.findDialog.Destroy()
-            self.findDialog = None
-        # dialog already open, if yes give focus
-        if self.findDialog:
-            self.findDialog.Show(1)
-            self.findDialog.Raise()
-            return
-        if not findStr:
-            findStr = self.findStr
-        # find data
-        data = wx.FindReplaceData(self.findFlags)
-        data.SetFindString(findStr)
-        data.SetReplaceString(self.replaceStr)
-        # dialog
-        title = 'Find'
-        if self.findDialogStyle & wx.FR_REPLACEDIALOG:
-            title = 'Find & Replace'
-
-        self.findDialog = wx.FindReplaceDialog(
-            self, data, title, self.findDialogStyle)
-        # bind the event to the dialog, see the example in wxPython demo
-        self.findDialog.Bind(wx.EVT_FIND, self.OnFind)
-        self.findDialog.Bind(wx.EVT_FIND_NEXT, self.OnFind)
-        self.findDialog.Bind(wx.EVT_FIND_REPLACE, self.OnReplace)
-        self.findDialog.Bind(wx.EVT_FIND_REPLACE_ALL, self.OnReplaceAll)
-        self.findDialog.Bind(wx.EVT_FIND_CLOSE, self.OnFindClose)
-        self.findDialog.Show(1)
-        self.findDialog.data = data  # save a reference to it...
-
-    def message(self, text):
-        """show the message on statusbar"""
-        dp.send('frame.show_status_text', text=text)
-
-    def _find_text(self, minPos, maxPos, text, flags=0):
-        position = self.FindText(minPos, maxPos, text, flags)
-        if isinstance(position, tuple):
-            position = position[0] # wx ver 4.1.0 returns (start, end)
-        return position
-
-    def doFind(self, strFind, forward=True):
-        """search the string"""
-        current = self.GetCurrentPos()
-        position = -1
-        if forward:
-            position = self._find_text(current, len(self.GetText()),
-                                       strFind, self.stcFindFlags)
-            if position == -1:
-                # wrap around
-                self.wrapped += 1
-                position = self._find_text(0, current + len(strFind), strFind,
-                                           self.stcFindFlags)
-        else:
-            position = self._find_text(current - len(strFind), 0, strFind,
-                                       self.stcFindFlags)
-            if position == -1:
-                # wrap around
-                self.wrapped += 1
-                position = self._find_text(len(self.GetText()), current,
-                                           strFind, self.stcFindFlags)
-
-        # not found the target, do not change the current position
-        if position == -1:
-            self.message("'%s' not found!" % strFind)
-            position = current
-            strFind = """"""
-        self.GotoPos(position)
-        self.SetSelection(position, position + len(strFind))
-        return position
-
-    def OnFind(self, event):
-        """search the string"""
-        self.findStr = event.GetFindString()
-        self.findFlags = event.GetFlags()
-        flags = 0
-        if wx.FR_WHOLEWORD & self.findFlags:
-            flags |= stc.STC_FIND_WHOLEWORD
-        if wx.FR_MATCHCASE & self.findFlags:
-            flags |= stc.STC_FIND_MATCHCASE
-        self.stcFindFlags = flags
-        return self.doFind(self.findStr, wx.FR_DOWN & self.findFlags)
-
-    def OnFindClose(self, event):
-        """close find & replace dialog"""
-        event.GetDialog().Destroy()
-
-    def OnReplace(self, event):
-        """replace"""
-        # Next line avoid infinite loop
-        findStr = event.GetFindString()
-        self.replaceStr = event.GetReplaceString()
-
-        source = self
-        selection = source.GetSelectedText()
-        if not event.GetFlags() & wx.FR_MATCHCASE:
-            findStr = findStr.lower()
-            selection = selection.lower()
-
-        if selection == findStr:
-            position = source.GetSelectionStart()
-            source.ReplaceSelection(self.replaceStr)
-            source.SetSelection(position, position + len(self.replaceStr))
-        # jump to next instance
-        position = self.OnFind(event)
-        return position
-
-    def OnReplaceAll(self, event):
-        """replace all the instances"""
-        source = self
-        count = 0
-        self.wrapped = 0
-        position = start = source.GetCurrentPos()
-        while position > -1 and (not self.wrapped or position < start):
-            position = self.OnReplace(event)
-            if position != -1:
-                count += 1
-            if self.wrapped >= 2:
-                break
-        self.GotoPos(start)
-        if not count:
-            self.message("'%s' not found!" % event.GetFindString())
-
-    def OnFindNext(self, event):
-        """go the previous instance of search string"""
-        findStr = self.GetSelectedText()
-        if findStr:
-            self.findStr = findStr
-        if self.findStr:
-            self.doFind(self.findStr)
-
-    def OnFindPrev(self, event):
-        """go the previous instance of search string"""
-        findStr = self.GetSelectedText()
-        if findStr:
-            self.findStr = findStr
-        if self.findStr:
-            self.doFind(self.findStr, False)
-
-class EditorBase(wx.py.editwindow.EditWindow, EditorFindMixin, EditorThemeMixin):
+class EditorBase(wx.py.editwindow.EditWindow, FindEditorMixin, EditorThemeMixin):
     ID_CUT = wx.NewIdRef()
     ID_COPY = wx.NewIdRef()
     ID_PASTE = wx.NewIdRef()
@@ -466,7 +296,6 @@ class EditorBase(wx.py.editwindow.EditWindow, EditorFindMixin, EditorThemeMixin)
 
     def __init__(self, parent, style=wx.CLIP_CHILDREN | wx.BORDER_NONE):
         wx.py.editwindow.EditWindow.__init__(self, parent, style=style)
-        EditorFindMixin.__init__(self)
         EditorThemeMixin.__init__(self)
 
         self.SetupEditor()
@@ -505,8 +334,12 @@ class EditorBase(wx.py.editwindow.EditWindow, EditorFindMixin, EditorThemeMixin)
         self.CmdKeyAssign(ord('Z'), wx.stc.STC_SCMOD_CTRL | wx.stc.STC_SCMOD_SHIFT, wx.stc.STC_CMD_REDO)
 
         self.LoadConfig()
+
         # this line after bind wx.EVT_MENU
-        self.SetupFind()
+        FindEditorMixin.__init__(self, replace=True)
+        accel = FindEditorMixin.BuildAccelTable(self)
+        self.accel = wx.AcceleratorTable(accel)
+        self.SetAcceleratorTable(self.accel)
 
     def LoadConfig(self):
         resp = dp.send('frame.get_config', group='editor', key='zoom')

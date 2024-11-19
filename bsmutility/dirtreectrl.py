@@ -1,30 +1,7 @@
 """
-    DirTreeCtrl
-
-    @summary: A tree control for use in displaying directories
-    @author: Collin Green aka Keeyai
-    @url: http://keeyai.com
-    @license: public domain -- use it how you will, but a link back would be nice
-    @version: 0.9.0
-    @note:
-        behaves just like a TreeCtrl
-
-        Usage:
-            set your default and directory images using addIcon -- see the commented
-            last two lines of __init__
-
-            initialze the tree then call SetRootDir(directory) with the root
-            directory you want the tree to use
-
-        use SetDeleteOnCollapse(bool) to make the tree delete a node's children
-        when the node is collapsed. Will (probably) save memory at the cost of
-        a bit o' speed
-
-        use addIcon to use your own icons for the given file extensions
-
-
-    @todo:
-        extract ico from exes found in directory
+    DirListCtrl/DirTreeCtrl/DirTreeList
+    @summary: A list/tree/treelist control to show directories
+    The idea is based on the DirTreeCtrl 0.9.0 from Collin Green (http://keeyai.com)
 """
 
 import os
@@ -40,6 +17,7 @@ import wx
 import wx.py.dispatcher as dp
 import wx.lib.agw.hypertreelist as HTL
 from .findlistctrl import ListCtrlBase
+from .findmixin import FindTreeMixin
 from .utility import open_file_with_default_app, \
                      show_file_in_finder, get_file_finder_name
 wxEVT_DIR_OPEN = wx.NewEventType()
@@ -47,8 +25,8 @@ wxEVT_DIR_OPEN = wx.NewEventType()
 EVT_DIR_OPEN = wx.PyEventBinder(wxEVT_DIR_OPEN, 1)
 
 class DirEvent(wx.PyCommandEvent):
-    def __init__(self, commandType, path, id=0, **kwargs):
-        wx.PyCommandEvent.__init__(self, commandType, id)
+    def __init__(self, commandType, path, eid=0, **kwargs):
+        wx.PyCommandEvent.__init__(self, commandType, eid)
         self.path = path
         self.veto = False
         self.data = kwargs
@@ -73,6 +51,7 @@ class DirEvent(wx.PyCommandEvent):
         return self.data
 
 def is_hidden(filepath):
+
     filepath = os.path.abspath(filepath)
     name = os.path.basename(filepath)
     if platform.system() == 'Darwin':       # macOS
@@ -90,6 +69,8 @@ class Directory(object):
         self.directory = directory
 
 class DirMixin:
+    """helper class to handle files/folders in a folder"""
+
     ID_COPY_NAME = wx.NewIdRef()
     ID_COPY_PATH = wx.NewIdRef()
     ID_COPY_PATH_REL = wx.NewIdRef()
@@ -99,7 +80,8 @@ class DirMixin:
     ID_RENAME = wx.NewIdRef()
     ID_PASTE_FOLDER = wx.NewIdRef()
 
-    """helper class to handle files/folders in a folder"""
+    FOLDER = 0
+    FILE = 1
     def __init__(self):
 
         self.rootdir = ""
@@ -114,7 +96,7 @@ class DirMixin:
         # blank default
         self.iconentries['default'] = -1
         self.iconentries['directory'] = -1
-        self.iconentries['directoryopen'] = -1
+        self.iconentries['directory_open'] = -1
         scale = 1
         if not wx.Platform == '__WXMSW__':
             # looks like Windows doesn't support high DPI image (wx 4.2.2)
@@ -124,7 +106,7 @@ class DirMixin:
         self.addBitmap(bmp, 'directory')
         bmp = wx.ArtProvider.GetBitmap(wx.ART_FOLDER_OPEN, wx.ART_OTHER, (int(16*scale), int(16*scale)))
         bmp.SetScaleFactor(scale)
-        self.addBitmap(bmp, 'directoryopen')
+        self.addBitmap(bmp, 'directory_open')
         bmp = wx.ArtProvider.GetBitmap(wx.ART_NORMAL_FILE, wx.ART_OTHER, (int(16*scale), int(16*scale)))
         bmp.SetScaleFactor(scale)
         self.addBitmap(bmp, 'default')
@@ -143,6 +125,12 @@ class DirMixin:
         self.Bind(wx.EVT_MENU, self.OnProcessEvent, id=wx.ID_NEW)
         self.Bind(wx.EVT_MENU, self.OnProcessEvent, id=self.ID_PASTE_FOLDER)
 
+        accel = self.BuildAccelTable()
+
+        self.accel = wx.AcceleratorTable(accel)
+        self.SetAcceleratorTable(self.accel)
+
+    def BuildAccelTable(self):
         accel = [
             #(wx.ACCEL_CTRL, wx.WXK_RETURN, wx.ID_OPEN),
             (wx.ACCEL_ALT | wx.ACCEL_CTRL, ord('R'), self.ID_OPEN_IN_FINDER),
@@ -153,8 +141,7 @@ class DirMixin:
             (wx.ACCEL_SHIFT, wx.WXK_RETURN, self.ID_RENAME),
             (wx.ACCEL_NORMAL, wx.WXK_DELETE, wx.ID_DELETE),
         ]
-        self.accel = wx.AcceleratorTable(accel)
-        self.SetAcceleratorTable(self.accel)
+        return accel
 
     def addBitmap(self, bitmap, name):
         try:
@@ -201,6 +188,7 @@ class DirMixin:
         self.LoadPath(directory, pattern=pattern, show_hidden=show_hidden)
 
     def GetPathInfo(self, filepath):
+        # return a list of info to be displayed
         name = os.path.basename(filepath)
         return [name]
 
@@ -232,24 +220,24 @@ class DirMixin:
         if pattern:
             files_all = fnmatch.filter(files_all, pattern)
         if not show_hidden:
-            folders_all = [f for f in folders_all if not is_hidden(f)]
-            files_all = [f for f in files_all if not is_hidden(f)]
+            folders_all = [f for f in folders_all if not is_hidden(os.path.join(directory, f))]
+            files_all = [f for f in files_all if not is_hidden(os.path.join(directory, f))]
 
         data = []
         folders_all.sort(key=lambda y: y.lower())
         files_all.sort(key=lambda y: y.lower())
         for f in folders_all:
             info = self.GetPathInfo(os.path.join(directory, f))
-            data.append(info + [self.iconentries['directory'], 0])
+            data.append(info + [self.iconentries['directory'], self.FOLDER])
 
-        # add file nodes to tree
+        # add file nodes
         for f in files_all:
             # process the file extension to build image list
             imagekey = self.processFileExtension(os.path.join(
                 directory, f))
 
             info = self.GetPathInfo(os.path.join(directory, f))
-            data.append(info + [imagekey, 1])
+            data.append(info + [imagekey, self.FILE])
         return data
 
     def getFileExtension(self, filename):
@@ -270,6 +258,19 @@ class DirMixin:
         (imagelists are a lame way to handle images)"""
         ext = self.getFileExtension(filename)
         ext = ext.lower()
+
+        def _icon2bitmap(icon):
+            bitmap = wx.Bitmap()
+            bitmap.CopyFromIcon(icon)
+            image = bitmap.ConvertToImage()
+            scale = 1
+            if not wx.Platform == '__WXMSW__':
+                scale = self.GetDPIScaleFactor()
+            image = image.Scale(int(16*scale), int(16*scale), wx.IMAGE_QUALITY_HIGH)
+            bitmap = image.ConvertToBitmap()
+            bitmap.SetScaleFactor(scale)
+            return bitmap
+
 
         excluded = ['', '.exe', '.ico']
         # do nothing if no extension found or in excluded list
@@ -294,15 +295,7 @@ class DirMixin:
                                 icon = wx.Icon()
                                 icon.LoadFile(info[1], type=wx.BITMAP_TYPE_ICON)
                             if icon.IsOk():
-                                bitmap = wx.Bitmap()
-                                bitmap.CopyFromIcon(icon)
-                                image = bitmap.ConvertToImage()
-                                scale = 1
-                                if not wx.Platform == '__WXMSW__':
-                                    scale = self.GetDPIScaleFactor()
-                                image = image.Scale(int(16*scale), int(16*scale), wx.IMAGE_QUALITY_HIGH)
-                                bitmap = image.ConvertToBitmap()
-                                bitmap.SetScaleFactor(scale)
+                                bitmap = _icon2bitmap(icon)
 
                                 # add to imagelist and store returned key
                                 iconkey = self.imagelist.Add(bitmap)
@@ -321,25 +314,29 @@ class DirMixin:
                 return self.iconentries[ext]
 
         # if exe, get first icon out of it
-        elif ext == '.exe':
-            #TODO: get icon out of exe withOUT using weird winpy BS
-            pass
-
-        # if ico just use it
-        elif ext == '.ico':
-            try:
-                icon = wx.Icon(filename, wx.BITMAP_TYPE_ICO)
-                if icon.IsOk():
-                    return self.imagelist.AddIcon(icon)
-
-            except:
-                traceback.print_exc()
-                return self.iconentries['default']
+        elif ext in ['.exe', '.ico']:
+            if filename not in self.iconentries:
+                try:
+                    iloc = wx.IconLocation(filename, 0)
+                    icon = wx.Icon(iloc)
+                    if icon.IsOk():
+                        bitmap = _icon2bitmap(icon)
+                        # add to imagelist and store returned key
+                        iconkey = self.imagelist.Add(bitmap)
+                        self.iconentries[filename] = iconkey
+                        # update tree with new imagelist - inefficient
+                        self.SetImageList(self.imagelist)
+                except:
+                    pass
+            if filename in self.iconentries:
+                return self.iconentries[filename]
 
         # if no key returned already, return default
         return self.iconentries['default']
 
     def HitTestItem(self, pos):
+        # hit test to see if pos is on some item
+        # return (is_on, item)
         return False, None
 
     def OnContextMenu(self, event):
@@ -522,7 +519,6 @@ class DirMixin:
 
         self.HighlightPath(filename)
 
-
     def copy_path(self, items, relative=False, posix=False, basename=False):
         file_path = []
         for item in items:
@@ -639,23 +635,26 @@ def pretty_size(byte, units=None):
 class DirWithColumnsMixin(DirMixin):
     ID_AUTO_COL_SIZE = wx.NewIdRef()
     ID_AUTO_COL_SIZE_ALL = wx.NewIdRef()
-    def __init__(self):
-        DirMixin.__init__(self)
-        self.columns = [
+
+    columns = [
                 {'name': 'Name', 'visible': True, 'id': wx.NewIdRef(), 'optional': False, 'min_width': 200, 'align': 'left'},
                 {'name': 'Data modified', 'visible': True, 'id': wx.NewIdRef(), 'optional': True, 'min_width': 100, 'align': 'left'},
                 {'name': 'Data created', 'visible': False, 'id': wx.NewIdRef(), 'optional': True, 'min_width': 100, 'align': 'left'},
                 {'name': 'Type', 'visible': False, 'id': wx.NewIdRef(), 'optional': True, 'min_width': 60, 'align': 'left'},
-                {'name': 'Size', 'visible': True, 'id': wx.NewIdRef(), 'optional': True, 'min_width': 60, 'align': 'left'}
+                {'name': 'Size', 'visible': True, 'id': wx.NewIdRef(), 'optional': True, 'min_width': 80, 'align': 'right'}
                 ]
+
+    def __init__(self):
+        DirMixin.__init__(self)
+
         self.columns_shown = list(range(len(self.columns)))
 
 
     def OnColRightClick(self, event):
         menu = wx.Menu()
 
-        menu.Append(self.ID_AUTO_COL_SIZE, 'Size columns to Fit')
-        menu.Append(self.ID_AUTO_COL_SIZE_ALL, 'Size All columns to Fit')
+        menu.Append(self.ID_AUTO_COL_SIZE, 'Size columns to fit')
+        menu.Append(self.ID_AUTO_COL_SIZE_ALL, 'Size all columns to fit')
         menu.AppendSeparator()
         for col in self.columns:
             item = menu.AppendCheckItem(col['id'], col['name'])
@@ -694,7 +693,7 @@ class DirWithColumnsMixin(DirMixin):
             return mtime
         elif column_name == 'Size':
             # size:
-            if item[-1] == 0:
+            if item[-1] == self.FOLDER:
                 # folder
                 return ""
             size = item[column]
@@ -726,11 +725,15 @@ class DirWithColumnsMixin(DirMixin):
         self.BuildColumns()
 
     def LoadConfig(self):
+        super().LoadConfig()
+
         resp = dp.send('frame.get_config', group='dirlistctrl', key='columns_shown')
         if resp and resp[0][1] is not None:
             self.SetShowColumns(resp[0][1])
 
     def SaveConfig(self):
+        super().SaveConfig()
+
         dp.send('frame.set_config', group='dirlistctrl', columns_shown=self.GetShownColumns())
 
 class DirTreeMixin(DirMixin):
@@ -738,15 +741,14 @@ class DirTreeMixin(DirMixin):
     def __init__(self):
         DirMixin.__init__(self)
 
-
         # option to delete node items from tree when node is collapsed
-        self.DELETEONCOLLAPSE = False
+        self.delete_on_collapse = False
 
     def SetDeleteOnCollapse(self, selection):
         """Sets the tree option to delete leaf items when the node is
         collapsed. Will slow down the tree slightly but will probably save memory."""
         if isinstance(selection, bool):
-            self.DELETEONCOLLAPSE = selection
+            self.delete_on_collapse = selection
 
     def SetRootDir(self, directory, pattern=None, show_hidden=True):
 
@@ -762,10 +764,13 @@ class DirTreeMixin(DirMixin):
         self.SetItemData(root, Directory(directory))
         self.SetItemImage(root, self.iconentries['directory'],
                           wx.TreeItemIcon_Normal)
-        self.SetItemImage(root, self.iconentries['directoryopen'],
+        self.SetItemImage(root, self.iconentries['directory_open'],
                           wx.TreeItemIcon_Expanded)
 
         self.LoadDir(root, directory, pattern, show_hidden)
+
+    def UpdateItem(self, item, d):
+        pass
 
     def LoadDir(self, item, directory, pattern=None, show_hidden=True):
 
@@ -774,20 +779,24 @@ class DirTreeMixin(DirMixin):
         # process the file extension to build image list
         for d in data:
             # populate the tree
-            if d[-1] == 0:
+            if d[-1] == self.FOLDER:
                 child = self.AppendItem(item, d[0])
                 # directory
                 self.SetItemImage(child, self.iconentries['directory'],
-                                  wx.TreeItemIcon_Normal)
-                self.SetItemImage(child, self.iconentries['directoryopen'],
-                                  wx.TreeItemIcon_Expanded)
+                                  which=wx.TreeItemIcon_Normal)
+                self.SetItemImage(child, self.iconentries['directory_open'],
+                                  which=wx.TreeItemIcon_Expanded)
                 self.SetItemHasChildren(child, True)
 
                 # save item path for expanding later
                 self.SetItemData(child, Directory(os.path.join(directory, d[0])))
             else:
                 # process the file extension to build image list
-                self.AppendItem(item, d[0], image=d[-2])
+                child = self.AppendItem(item, d[0], image=d[-2])
+
+            self.UpdateItem(child, d)
+
+        return data
 
     def GetItemPath(self, item):
         if item == self.GetRootItem():
@@ -821,21 +830,20 @@ class DirTreeMixin(DirMixin):
 
     def TreeItemCollapsing(self, event):
         """Called when a node is about to collapse. Removes
-        the children from the tree if self.DELETEONCOLLAPSE is
+        the children from the tree if self.delete_on_collapse is
         set - see L{SetDeleteOnCollapse}
         """
         item = event.GetItem()
 
         # delete the node's children if that tree option is set
-        if self.DELETEONCOLLAPSE:
+        if self.delete_on_collapse:
             self.DeleteChildren(item)
 
         event.Skip()
 
     def UpdateFolder(self, item):
-
+        # the folder name may be changed, update its corresponding data
         filepath = self.GetItemPath(item)
-        print(filepath)
         self.SetItemData(item, Directory(filepath))
 
     def OnRename(self, event):
@@ -844,18 +852,19 @@ class DirTreeMixin(DirMixin):
         item = event.GetItem()
         filepath = self.GetItemPath(item)
         if os.path.isdir(filepath):
+            # call later to give it sometime for the 'label' to be updated
             wx.CallAfter(self.UpdateFolder, item)
 
         super().OnRename(event)
 
-class DirTreeCtrl(wx.TreeCtrl, DirTreeMixin):
+
+class DirTreeCtrl(wx.TreeCtrl, DirTreeMixin, FindTreeMixin):
     """
     A wx.TreeCtrl that is used for displaying directory structures.
     Virtually handles paths to help with memory management.
     """
     def __init__(self, parent, **kwargs):
-        """Initializes the tree and binds some events we need for
-        making this dynamically load its data."""
+
         if 'style' not in kwargs:
             kwargs['style'] = (wx.TR_DEFAULT_STYLE
                                    | wx.TR_HAS_VARIABLE_ROW_HEIGHT
@@ -863,6 +872,7 @@ class DirTreeCtrl(wx.TreeCtrl, DirTreeMixin):
                                    | wx.TR_EDIT_LABELS)
         wx.TreeCtrl.__init__(self, parent, **kwargs)
         DirTreeMixin.__init__(self)
+        FindTreeMixin.__init__(self)
 
         self.SetImageList(self.imagelist)
 
@@ -876,8 +886,10 @@ class DirTreeCtrl(wx.TreeCtrl, DirTreeMixin):
         self.Bind(wx.EVT_TREE_END_LABEL_EDIT, self.OnRename)
         self.Bind(wx.EVT_TREE_ITEM_ACTIVATED, self.OnItemActivated)
 
-    def GetItemFromEvent(self, event):
-        return event.GetIndex()
+    def BuildAccelTable(self):
+        accel = DirTreeMixin.BuildAccelTable(self)
+        accel2 = FindTreeMixin.BuildAccelTable(self)
+        return accel + accel2
 
     def HitTestItem(self, pos):
         item, _ = self.HitTest(self.ScreenToClient(pos))
@@ -895,7 +907,6 @@ class DirTreeCtrl(wx.TreeCtrl, DirTreeMixin):
             item, cookie = self.GetNextChild(root_item, cookie)
 
 
-
 class DirListCtrl(ListCtrlBase, DirWithColumnsMixin):
     """
     A wx.ListCtrl that is used for displaying directory structures.
@@ -903,8 +914,6 @@ class DirListCtrl(ListCtrlBase, DirWithColumnsMixin):
     """
 
     def __init__(self, parent, *args, **kwds):
-        """Initializes the tree and binds some events we need for
-        making this dynamically load its data."""
 
         ListCtrlBase.__init__(self, parent, *args, **kwds)
         DirWithColumnsMixin.__init__(self)
@@ -916,6 +925,7 @@ class DirListCtrl(ListCtrlBase, DirWithColumnsMixin):
         self.ExtendRulesAndAlternateColour(False)
 
         self.SetImageList(self.imagelist, wx.IMAGE_LIST_SMALL)
+
         self.Bind(wx.EVT_LIST_COL_RIGHT_CLICK, self.OnColRightClick)
         self.Bind(wx.EVT_CONTEXT_MENU, self.OnContextMenu)
         self.Bind(wx.EVT_LIST_END_LABEL_EDIT, self.OnRename)
@@ -967,6 +977,9 @@ class DirListCtrl(ListCtrlBase, DirWithColumnsMixin):
     def OnGetItemImage(self, item):
         return self.data_shown[item][-2]
 
+    def GetItemFromEvent(self, event):
+        return event.GetIndex()
+
     def FindText(self, start, end, text, flags=0):
         direction = 1 if end > start else -1
         for i in range(start, end+direction, direction):
@@ -997,6 +1010,7 @@ class DirListCtrl(ListCtrlBase, DirWithColumnsMixin):
         self.Fill(self.pattern)
 
         self.AutoSizeColumns()
+        return self.data
 
     def Delete(self, item):
         if isinstance(item, wx.ListItem):
@@ -1024,7 +1038,7 @@ class DirListCtrl(ListCtrlBase, DirWithColumnsMixin):
 
         resp = dp.send('frame.get_config', group='dirlistctrl', key='columns_order')
         if resp and resp[0][1] is not None:
-            self.setcolumnsorder(resp[0][1])
+            self.SetColumnsOrder(resp[0][1])
 
     def SaveConfig(self):
         DirWithColumnsMixin.LoadConfig(self)
@@ -1042,9 +1056,9 @@ class DirListCtrl(ListCtrlBase, DirWithColumnsMixin):
         return -1
 
 
-class DirTreeList(HTL.HyperTreeList, DirWithColumnsMixin, DirTreeMixin):
+class DirTreeList(HTL.HyperTreeList, DirWithColumnsMixin, DirTreeMixin, FindTreeMixin):
     """
-    A HTL.HyperTreeListthat is used for displaying directory structures.
+    A HTL.HyperTreeList that is used for displaying directory structures.
     Virtually handles paths to help with memory management.
     """
 
@@ -1058,10 +1072,17 @@ class DirTreeList(HTL.HyperTreeList, DirWithColumnsMixin, DirTreeMixin):
                                    | HTL.TR_HIDE_ROOT
                                    | HTL.TR_EDIT_LABELS)
 
+        if platform.system() == 'Windows':
+            # the default button on windows is too small
+            HTL._BTNHEIGHT = 13
+            HTL._BTNWIDTH = 13
+
         HTL.HyperTreeList.__init__(self, parent, **kwargs)
         DirWithColumnsMixin.__init__(self)
         DirTreeMixin.__init__(self)
+        FindTreeMixin.__init__(self)
 
+        self.sort_col = (None, True) # col, ascending
 
         self.SetImageList(self.imagelist)
 
@@ -1078,6 +1099,28 @@ class DirTreeList(HTL.HyperTreeList, DirWithColumnsMixin, DirTreeMixin):
         self.Bind(wx.EVT_TREE_END_LABEL_EDIT, self.OnRename)
         self.Bind(wx.EVT_TREE_ITEM_ACTIVATED, self.OnItemActivated)
         self.Bind(wx.EVT_LIST_COL_RIGHT_CLICK, self.OnColRightClick)
+        self.Bind(wx.EVT_LIST_COL_CLICK, self.OnColClick)
+
+    def BuildAccelTable(self):
+        accel = DirTreeMixin.BuildAccelTable(self)
+        accel2 = FindTreeMixin.BuildAccelTable(self)
+        return accel + accel2
+
+    def OnColClick(self, event):
+        col= event.GetColumn()
+        if col == -1:
+            return # clicked outside any column.
+        col_prev, ascending = self.sort_col
+        if col_prev == col:
+            ascending = not ascending
+        elif col_prev is not None and col_prev != col:
+            self.GetHeaderWindow().SetSortIcon(col, wx.HDR_SORT_ICON_NONE)
+            ascending = True
+
+        flag = wx.HDR_SORT_ICON_UP if ascending else wx.HDR_SORT_ICON_DOWN
+        self.sort_col = (col, ascending)
+        self.GetHeaderWindow().SetSortIcon(col, flag)
+        self.SetRootDir(self.rootdir, self.pattern, self.show_hidden)
 
     def BuildColumns(self):
         if self.GetColumnCount() == 0:
@@ -1099,10 +1142,27 @@ class DirTreeList(HTL.HyperTreeList, DirWithColumnsMixin, DirTreeMixin):
     def OnRightClickItem2(self, event):
         self.OnRightClickItem(event.GetItem())
 
+    def UpdateItem(self, item, d):
+        for col in range(len(self.columns)):
+            self.SetItemText(item, self.GetItemColumnText(d, col), col)
+
+    def SortBy(self, data, column, ascending):
+        data.sort(key=lambda x: x[column], reverse=not ascending)
+        data.sort(key=lambda x: x[-1])
+
+    def LoadPath(self, directory, pattern=None, show_hidden=True):
+        data = DirWithColumnsMixin.LoadPath(self, directory, pattern, show_hidden)
+        col, ascending = self.sort_col
+        if col is not None:
+            self.SortBy(data, col, ascending)
+        return data
+
     def LoadDir(self, item, directory, pattern=None, show_hidden=True):
         DirTreeMixin.LoadDir(self, item, directory, pattern, show_hidden)
 
-        self.AutoSizeColumns()
+        # Give the TreeList control sometime to update the best column width
+        # not perfect on Windows
+        wx.CallAfter(self.AutoSizeColumns)
 
     def HitTestItem(self, pos):
         item = self.HitTest(self.ScreenToClient(pos))
@@ -1123,7 +1183,7 @@ class DirTreeList(HTL.HyperTreeList, DirWithColumnsMixin, DirTreeMixin):
         if columns is None:
             columns = range(self.GetColumnCount())
         for col in columns:
-            self.SetColumnWidth(col, self.GetMainWindow().GetBestColumnWidth(col))
+            self.SetColumnWidth(col, self.GetMainWindow().GetBestColumnWidth(col)+10)
             if self.GetColumnWidth(col) < self.columns[col]['min_width']:
                 self.SetColumnWidth(col, self.columns[col]['min_width'])
 

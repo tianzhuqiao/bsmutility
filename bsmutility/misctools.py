@@ -326,7 +326,7 @@ class HistoryPanel(wx.Panel):
                 self.history[stamp].append(value)
         self.tree.DeleteChildren(self.root)
         self.tree.FillChildren(self.root)
-        item, cookie = self.tree.GetFirstChild(self.root)
+        item, _ = self.tree.GetFirstChild(self.root)
         if item.IsOk():
             self.tree.Expand(item)
             child, _ = self.tree.GetFirstChild(item)
@@ -482,6 +482,9 @@ class DirPanel(wx.Panel):
     ID_GOTO_PARENT = wx.NewIdRef()
     ID_GOTO_HOME = wx.NewIdRef()
     ID_MORE = wx.NewIdRef()
+    ID_STYLE_LIST = wx.NewIdRef()
+    ID_STYLE_TREE = wx.NewIdRef()
+    ID_STYLE_TREELIST = wx.NewIdRef()
     ID_SHOW_HIDDEN = wx.NewIdRef()
     ID_SHOW_PATTERN_TOOLBAR = wx.NewIdRef()
 
@@ -519,6 +522,9 @@ class DirPanel(wx.Panel):
 
         self.tb.AddSeparator()
         self.Bind(wx.EVT_TOOL, self.OnMenuDropDown, id=self.ID_MORE)
+        self.Bind(wx.EVT_MENU, self.OnProcessMenu, id=self.ID_STYLE_LIST)
+        self.Bind(wx.EVT_MENU, self.OnProcessMenu, id=self.ID_STYLE_TREE)
+        self.Bind(wx.EVT_MENU, self.OnProcessMenu, id=self.ID_STYLE_TREELIST)
         self.Bind(wx.EVT_MENU, self.OnProcessMenu, id=self.ID_SHOW_HIDDEN)
         self.Bind(wx.EVT_MENU, self.OnProcessMenu, id=self.ID_SHOW_PATTERN_TOOLBAR)
 
@@ -526,8 +532,17 @@ class DirPanel(wx.Panel):
 
         self.addressbar = AuiPathBar(self, agwStyle=agwStyle | aui.AUI_TB_HORZ_TEXT)
 
-        #self.dirwin = DirListCtrl(self, style=wx.LC_REPORT|wx.LC_VIRTUAL|wx.LC_EDIT_LABELS)
-        self.dirwin = DirTreeList(self)
+
+        ctrl_style = 'list'
+        resp = dp.send('frame.get_config', group='dirpanel', key='ctrl_style')
+        if resp and resp[0][1] is not None:
+            ctrl_style = resp[0][1]
+        if ctrl_style == 'treelist':
+            self.dirwin = DirTreeList(self)
+        elif ctrl_style == 'tree':
+            self.dirwin = DirTreeCtrl(self)
+        else:
+            self.dirwin = DirListCtrl(self, style=wx.LC_REPORT|wx.LC_VIRTUAL|wx.LC_EDIT_LABELS)
 
         agwStyle = aui.AUI_TB_OVERFLOW | aui.AUI_TB_PLAIN_BACKGROUND
         self.tb2 = aui.AuiToolBar(self, agwStyle=agwStyle)
@@ -604,7 +619,6 @@ class DirPanel(wx.Panel):
             path = resp[0][1]
 
         self.dirwin.LoadConfig()
-
         self.doGoToAddress(path)
 
     def SaveConfig(self):
@@ -619,6 +633,14 @@ class DirPanel(wx.Panel):
 
     def OnMenuDropDown(self, event):
         menu = wx.Menu()
+        menu.AppendSeparator()
+        item = menu.AppendCheckItem(self.ID_STYLE_LIST, "Show path as list")
+        item.Check(isinstance(self.dirwin, DirListCtrl))
+        item = menu.AppendCheckItem(self.ID_STYLE_TREE, "Show path as tree")
+        item.Check(isinstance(self.dirwin, DirTreeCtrl))
+        item = menu.AppendCheckItem(self.ID_STYLE_TREELIST, "Show path as treelist")
+        item.Check(isinstance(self.dirwin, DirTreeList))
+        menu.AppendSeparator()
         item = menu.AppendCheckItem(self.ID_SHOW_HIDDEN, "Show hidden file/folder")
         item.Check(self.showHidden)
         menu.AppendSeparator()
@@ -646,6 +668,17 @@ class DirPanel(wx.Panel):
             self.tb2.Show(not self.tb2.IsShown())
             self.Layout()
             self.Update()
+        elif eid in [self.ID_STYLE_LIST, self.ID_STYLE_TREE, self.ID_STYLE_TREELIST]:
+            ctrl_style = 'list'
+            if eid == self.ID_STYLE_TREE:
+                ctrl_style = 'tree'
+            elif eid == self.ID_STYLE_TREELIST:
+                ctrl_style = 'treelist'
+            dp.send('frame.set_config', group='dirpanel', ctrl_style=ctrl_style)
+            msg = 'Restart is require for changes to take effect!'
+            parent = self.GetTopLevelParent()
+            dlg = wx.MessageDialog(self, msg, parent.GetLabel(), wx.OK)
+            dlg.ShowModal()
 
     def GoTo(self, filepath, show=None):
         folder = filepath

@@ -13,7 +13,8 @@ import wx.py.dispatcher as dp
 from wx import stc
 from wx.py.pseudo import PseudoFile
 from .debugger import EngineDebugger
-from .editor_base import EditorThemeMixin, EditorFindMixin
+from .editor_base import EditorThemeMixin
+from .findmixin import FindEditorMixin
 from .shell_base import magic, aliasDict, sx, ls, cd, pwd, unescape_path
 from .utility import get_path_list
 
@@ -41,7 +42,7 @@ def _doc(command):
     else:
         _help(command)
 
-class Shell(pyshell.Shell, EditorFindMixin, EditorThemeMixin):
+class Shell(pyshell.Shell, FindEditorMixin, EditorThemeMixin):
     ID_COPY_PLUS = wx.NewIdRef()
     ID_PASTE_PLUS = wx.NewIdRef()
     ID_WRAP_MODE = wx.NewIdRef()
@@ -67,7 +68,6 @@ class Shell(pyshell.Shell, EditorFindMixin, EditorThemeMixin):
                                locals, InterpClass, startupScript,
                                execStartupScript, useStockId=False, *args, **kwds)
         EditorThemeMixin.__init__(self)
-        EditorFindMixin.__init__(self)
 
         theme = 'solarized-dark'
         resp = dp.send('frame.get_config', group='shell', key='theme')
@@ -134,14 +134,13 @@ class Shell(pyshell.Shell, EditorFindMixin, EditorThemeMixin):
         self.Bind(wx.EVT_MENU, lambda evt: self.clear(), id=self.ID_CLEAR)
 
         # find dialog
-        self.SetupFind()
-        # disable replace
-        self.findDialogStyle = 0
+        FindEditorMixin.__init__(self)
 
         eid_ctl_c = wx.NewIdRef()
         self.Bind(wx.EVT_MENU, self.OnCtrlC, id=eid_ctl_c)
-        accel_tbl = wx.AcceleratorTable([(wx.ACCEL_CTRL, ord('F'), self.ID_FIND_REPLACE),
-                                         (wx.ACCEL_RAW_CTRL, ord('C'), eid_ctl_c)])
+        accel = FindEditorMixin.BuildAccelTable(self)
+        accel += [(wx.ACCEL_RAW_CTRL, ord('C'), eid_ctl_c)]
+        accel_tbl = wx.AcceleratorTable(accel)
         self.SetAcceleratorTable(accel_tbl)
 
         self.LoadConfig()
