@@ -703,14 +703,26 @@ class DirWithColumnsMixin(DirMixin):
     def GetPathInfo(self, filepath):
         info = super().GetPathInfo(filepath)
         p = Path(filepath)
-        info.append(p.stat().st_mtime)
-        info.append(p.stat().st_ctime)
-        if p.is_dir():
-            ext = "Folder"
-        else:
+        try:
+            info.append(p.stat().st_mtime)
+        except:
+            info.append(0)
+        try:
+            info.append(p.stat().st_ctime)
+        except:
+            info.append(0)
+        ext = ''
+        try:
             ext = p.suffix
+            if p.is_dir():
+                ext = "Folder"
+        except:
+            pass
         info.append(ext)
-        info.append(p.stat().st_size)
+        try:
+            info.append(p.stat().st_size)
+        except:
+            info.append(0)
         return info
 
     def GetShownColumns(self):
@@ -773,6 +785,10 @@ class DirTreeMixin(DirMixin):
         pass
 
     def LoadDir(self, item, directory, pattern=None, show_hidden=True):
+
+        if self.GetChildrenCount(item) > 0:
+            # already loaded
+            return
 
         data = self.LoadPath(directory, pattern, show_hidden)
 
@@ -906,6 +922,23 @@ class DirTreeCtrl(wx.TreeCtrl, DirTreeMixin, FindTreeMixin):
                 break
             item, cookie = self.GetNextChild(root_item, cookie)
 
+    def GetNextItem(self, item):
+        if not item.IsOk():
+            return item
+        if isinstance(self.GetItemData(item), Directory):
+            d = self.GetItemData(item)
+            self.LoadDir(item, d.directory)
+
+        return super().GetNextItem(item)
+
+    def GetPrevItem(self, item):
+        if not item.IsOk():
+            return item
+        if isinstance(self.GetItemData(item), Directory):
+            d = self.GetItemData(item)
+            self.LoadDir(item, d.directory)
+
+        return super().GetPrevItem(item)
 
 class DirListCtrl(ListCtrlBase, DirWithColumnsMixin):
     """
@@ -983,6 +1016,9 @@ class DirListCtrl(ListCtrlBase, DirWithColumnsMixin):
     def FindText(self, start, end, text, flags=0):
         direction = 1 if end > start else -1
         for i in range(start, end+direction, direction):
+            # press esc to quit find, in case the list is very large
+            if wx.GetKeyState(wx.WXK_ESCAPE):
+                break
             m = self.data_shown[i][0]
             if self.Search(m, text, flags):
                 return i
@@ -1189,3 +1225,21 @@ class DirTreeList(HTL.HyperTreeList, DirWithColumnsMixin, DirTreeMixin, FindTree
 
     def OnRename(self, event):
         DirTreeMixin.OnRename(self, event)
+
+    def GetNextItem(self, item):
+        if not item.IsOk():
+            return item
+        if isinstance(self.GetItemData(item), Directory):
+            d = self.GetItemData(item)
+            self.LoadDir(item, d.directory)
+
+        return super().GetNextItem(item)
+
+    def GetPrevItem(self, item):
+        if not item.IsOk():
+            return item
+        if isinstance(self.GetItemData(item), Directory):
+            d = self.GetItemData(item)
+            self.LoadDir(item, d.directory)
+
+        return super().GetPrevItem(item)

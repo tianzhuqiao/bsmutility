@@ -192,13 +192,14 @@ class FindListMixin(FindMixin):
             self.message("'%s' not found!" % strFind)
             position = current
             strFind = """"""
-        #self.GotoPos(position)
-        #self.SetSelection(position, position + len(strFind))
+
+        # deselect all
         while True:
             sel = self.GetFirstSelected()
             if sel == -1:
                 break
             self.Select(sel, False)
+        # select the one found
         self.EnsureVisible(position)
         self.Select(position)
         return position
@@ -206,7 +207,7 @@ class FindListMixin(FindMixin):
 class FindTreeMixin(FindMixin):
 
     def GetNextItem(self, item):
-        if not item.IsOk():
+        if (item is None) or not item.IsOk():
             return item
 
         if self.ItemHasChildren(item):
@@ -218,22 +219,34 @@ class FindTreeMixin(FindMixin):
             return item_next
 
         item_next = self.GetItemParent(item)
-        if item_next == self.GetRootItem():
-            return None
+        while (item_next is not None) and item_next.IsOk():
+            if item_next == self.GetRootItem():
+                # reach the root, no more item to try
+                return None
+            else:
+                # try parent's sibling
+                sibling = self.GetNextSibling(item_next)
+                if (sibling is not None) and sibling.IsOk():
+                    # parent has sibling, visit it
+                    item_next = sibling
+                    break
+                else:
+                    # parent doesn't have sibling, try parent's parent
+                    item_next = self.GetItemParent(item_next)
         return item_next
 
     def GetPrevItem(self, item):
-        if not item.IsOk():
+        if (item is None) or not item.IsOk():
             return item
 
         item_prev = self.GetPrevSibling(item)
         if item_prev is not None and item_prev.IsOk():
-
-            if self.ItemHasChildren(item_prev):
-                child, cookie = self.GetFirstChild(item_prev)
-                while child is not None and child.IsOk():
-                    item_prev = child
-                    child, cookie = self.GetNextChild(item_prev, cookie)
+            # find the "last" children of item_prev
+            while self.ItemHasChildren(item_prev):
+                child = self.GetLastChild(item_prev)
+                if (child is None) or not child.IsOk():
+                    break
+                item_prev = child
 
             return item_prev
 
@@ -250,7 +263,12 @@ class FindTreeMixin(FindMixin):
         item = self.GetFocusedItem()
         if forward:
             item = self.GetNextItem(item)
-            while(item is not None and item.IsOk()):
+            while (item is not None) and item.IsOk():
+                if wx.GetKeyState(wx.WXK_ESCAPE):
+                    # use escape to quit "find", in case there are a lot of
+                    # items
+                    item_found = item
+                    break
                 if self.FindText(item, strFind, self.findFlags):
                     item_found = item
                     break
@@ -260,14 +278,20 @@ class FindTreeMixin(FindMixin):
                 # wrap around
                 self.wrapped += 1
                 item, _ = self.GetFirstChild(self.GetRootItem())
-                while item is not None and item.IsOk():
+                while (item is not None) and item.IsOk():
+                    if wx.GetKeyState(wx.WXK_ESCAPE):
+                        item_found = item
+                        break
                     if self.FindText(item, strFind, self.findFlags):
                         item_found = item
                         break
                     item = self.GetNextItem(item)
         else:
             item = self.GetPrevItem(item)
-            while item is not None and item.IsOk():
+            while (item is not None) and item.IsOk():
+                if wx.GetKeyState(wx.WXK_ESCAPE):
+                    item_found = item
+                    break
                 if self.FindText(item, strFind, self.findFlags):
                     item_found = item
                     break
@@ -276,11 +300,11 @@ class FindTreeMixin(FindMixin):
             if item_found is None:
                 # wrap around
                 self.wrapped += 1
-                child, cookie = self.GetFirstChild(self.GetRootItem())
-                while (child is not None) and child.IsOk():
-                    item = child
-                    child, cookie = self.GetNextChild(self.GetRootItem(), cookie)
+                item = self.GetLastChild(self.GetRootItem())
                 while (item is not None) and item.IsOk():
+                    if wx.GetKeyState(wx.WXK_ESCAPE):
+                        item_found = item
+                        break
                     if self.FindText(item, strFind, self.findFlags):
                         item_found = item
                         break
@@ -291,6 +315,17 @@ class FindTreeMixin(FindMixin):
             self.message("'%s' not found!" % strFind)
             strFind = """"""
             item_found = self.GetFocusedItem()
+
+        if self.GetWindowStyle() & wx.TR_MULTIPLE:
+            for item in self.GetSelections():
+                self.SelectItem(item, False)
+
+        if (self.GetWindowStyle() & wx.TR_MULTIPLE) and hasattr(self, "SetFocusedItem"):
+            # on Windows, when "wx.TR_MULTIPLE" style is set, without this line
+            # the focused item will not be set to "item_found" with SelectItem;
+            # and when "wx.TR_MULTIPLE" style is not set, call this line will
+            # not highlight item_found with SelectItem
+            self.SetFocusedItem(item_found)
 
         self.EnsureVisible(item_found)
         self.SelectItem(item_found)

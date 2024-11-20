@@ -18,6 +18,7 @@ from .utility import FastLoadTreeCtrl, svg_to_bitmap, get_path_list, \
 from .editor_base import EditorBase
 from .bsminterface import Interface
 from .auipathbar import AuiPathBar, EVT_AUIPATHBAR_CLICK
+from .findmixin import FindTreeMixin
 
 class HelpText(EditorBase):
 
@@ -191,6 +192,27 @@ class HelpPanel(wx.Panel):
         command = self.history[self.history_index]
         self.show_help(command, False)
 
+class HistoryTreeCtrl(FastLoadTreeCtrl, FindTreeMixin):
+
+    def __init__(self, *args, **kwargs):
+        FastLoadTreeCtrl.__init__(self, *args, **kwargs)
+        FindTreeMixin.__init__(self)
+
+        accel = FindTreeMixin.BuildAccelTable(self)
+        self.accel = wx.AcceleratorTable(accel)
+        self.SetAcceleratorTable(self.accel)
+
+    def GetNextItem(self, item):
+        if self.ItemHasChildren(item):
+            self.FillChildren(item)
+
+        return super().GetNextItem(item)
+
+    def GetPrevItem(self, item):
+        if self.ItemHasChildren(item):
+            self.FillChildren(item)
+
+        return super().GetPrevItem(item)
 
 class HistoryPanel(wx.Panel):
     ID_EXECUTE = wx.NewIdRef()
@@ -202,7 +224,7 @@ class HistoryPanel(wx.Panel):
                 wx.TR_HAS_VARIABLE_ROW_HEIGHT
         # no need to sort the commands, as they are naturally sorted by
         # execution time
-        self.tree = FastLoadTreeCtrl(self,
+        self.tree = HistoryTreeCtrl(self,
                                      getchildren=self.get_children,
                                      style=style,
                                      sort=False)
