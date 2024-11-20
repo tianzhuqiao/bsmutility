@@ -21,15 +21,11 @@ class FindListCtrl(wx.ListCtrl, FindListMixin):
 
     def BuildAccelTable(self):
         accel = [
-            (wx.ACCEL_CTRL, ord('F'), self.ID_FIND_REPLACE),
-            (wx.ACCEL_SHIFT, wx.WXK_F3, self.ID_FIND_PREV),
-            (wx.ACCEL_CTRL, ord('H'), self.ID_FIND_REPLACE),
-            (wx.ACCEL_RAW_CTRL, ord('H'), self.ID_FIND_REPLACE),
             (wx.ACCEL_CTRL, ord('A'), wx.ID_SELECTALL),
             (wx.ACCEL_CTRL, ord('C'), wx.ID_COPY),
             (wx.ACCEL_CTRL | wx.ACCEL_SHIFT, ord('C'), self.ID_COPY_NO_INDEX),
         ]
-        return accel
+        return accel + FindListMixin.BuildAccelTable(self)
 
     def OnRightClick(self, event):
 

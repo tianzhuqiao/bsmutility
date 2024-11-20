@@ -25,8 +25,9 @@ from .signalselsettingdlg import SignalSelSettingDlg, ConvertManagingDlg
 from .quaternion import Quaternion
 from .configfile import ConfigFile
 from .findlistctrl import ListCtrlBase
+from .findmixin import FindTreeMixin
 
-class TreeCtrlBase(FastLoadTreeCtrl):
+class TreeCtrlBase(FastLoadTreeCtrl, FindTreeMixin):
     """the tree control to show the hierarchy of the objects (dict)"""
 
     XAXIS = 'xaxis'
@@ -46,7 +47,8 @@ class TreeCtrlBase(FastLoadTreeCtrl):
     def __init__(self, parent, style=wx.TR_DEFAULT_STYLE):
         style = style | wx.TR_HAS_VARIABLE_ROW_HEIGHT | wx.TR_HIDE_ROOT |\
                 wx.TR_MULTIPLE | wx.TR_LINES_AT_ROOT
-        super().__init__(parent, self.get_children, style=style)
+        FastLoadTreeCtrl.__init__(self, parent, self.get_children, style=style)
+        FindTreeMixin.__init__(self)
 
         self.data = _dict()
         self.pattern = None
@@ -95,6 +97,10 @@ class TreeCtrlBase(FastLoadTreeCtrl):
 
         self.x_path = None
         self._convert_labels[self.XAXIS] = 'Set as x-axis'
+
+        accel = FindTreeMixin.BuildAccelTable(self)
+        self.accel = wx.AcceleratorTable(accel)
+        self.SetAcceleratorTable(self.accel)
 
     def GetConfigGroup(self):
         return  self.__class__.__name__
@@ -861,6 +867,18 @@ class TreeCtrlBase(FastLoadTreeCtrl):
         if self.HasXaxisData(item):
             x = self.GetItemDataFromPath(self.x_path)
         return x
+
+    def GetNextItem(self, item):
+        if self.ItemHasChildren(item):
+            self.FillChildren(item)
+
+        return super().GetNextItem(item)
+
+    def GetPrevItem(self, item):
+        if self.ItemHasChildren(item):
+            self.FillChildren(item)
+
+        return super().GetPrevItem(item)
 
 class TreeCtrlWithTimeStamp(TreeCtrlBase):
     # the leaf node is a DataFrame
