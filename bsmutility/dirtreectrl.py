@@ -185,14 +185,14 @@ class DirMixin:
         self.rootdir = directory
         self.pattern = pattern
         self.show_hidden = show_hidden
-        self.LoadPath(directory, pattern=pattern, show_hidden=show_hidden)
+        self.LoadPath(directory)
 
     def GetPathInfo(self, filepath):
         # return a list of info to be displayed
         name = os.path.basename(filepath)
         return [name]
 
-    def LoadPath(self, directory, pattern=None, show_hidden=True):
+    def LoadPath(self, directory):
         """Private function that gets called to load the file list
         for the given directory and append the items to the tree.
         Throws an exception if the directory is invalid.
@@ -217,9 +217,9 @@ class DirMixin:
                 folders_all.append(f)
             else:
                 files_all.append(f)
-        if pattern:
-            files_all = fnmatch.filter(files_all, pattern)
-        if not show_hidden:
+        if self.pattern:
+            files_all = fnmatch.filter(files_all, self.pattern)
+        if not self.show_hidden:
             folders_all = [f for f in folders_all if not is_hidden(os.path.join(directory, f))]
             files_all = [f for f in files_all if not is_hidden(os.path.join(directory, f))]
 
@@ -490,7 +490,7 @@ class DirMixin:
                 wx.TheClipboard.Close()
                 if files_copied:
                     if self.SendDirEvent(wxEVT_DIR_OPEN, root_dir):
-                        self.SetRootDir(root_dir)
+                        self.SetRootDir(root_dir, self.pattern, self.show_hidden)
                     for filename in files_copied:
                         self.HighlightPath(filename)
 
@@ -515,7 +515,7 @@ class DirMixin:
             return
 
         os.makedirs(new_folder)
-        self.SetRootDir(root_dir)
+        self.SetRootDir(root_dir, self.pattern, self.show_hidden)
 
         self.HighlightPath(filename)
 
@@ -768,6 +768,9 @@ class DirTreeMixin(DirMixin):
             raise ValueError(f"{directory} is not a valid directory")
 
         self.rootdir = directory
+        self.pattern = pattern
+        self.show_hidden = show_hidden
+
         # delete existing root, if any
         self.DeleteAllItems()
 
@@ -779,18 +782,18 @@ class DirTreeMixin(DirMixin):
         self.SetItemImage(root, self.iconentries['directory_open'],
                           wx.TreeItemIcon_Expanded)
 
-        self.LoadDir(root, directory, pattern, show_hidden)
+        self.LoadDir(root, directory)
 
     def UpdateItem(self, item, d):
         pass
 
-    def LoadDir(self, item, directory, pattern=None, show_hidden=True):
+    def LoadDir(self, item, directory):
 
         if self.GetChildrenCount(item) > 0:
             # already loaded
             return
 
-        data = self.LoadPath(directory, pattern, show_hidden)
+        data = self.LoadPath(directory)
 
         # process the file extension to build image list
         for d in data:
@@ -1040,9 +1043,9 @@ class DirListCtrl(ListCtrlBase, DirWithColumnsMixin):
         filename = self.GetItemText(item)
         return os.path.join(rootdir, filename)
 
-    def LoadPath(self, directory, pattern=None, show_hidden=True):
+    def LoadPath(self, directory):
         # check if directory exists and is a directory
-        self.data = super().LoadPath(directory, pattern, show_hidden)
+        self.data = super().LoadPath(directory)
         self.Fill(self.pattern)
 
         self.AutoSizeColumns()
@@ -1186,15 +1189,15 @@ class DirTreeList(HTL.HyperTreeList, DirWithColumnsMixin, DirTreeMixin, FindTree
         data.sort(key=lambda x: x[column], reverse=not ascending)
         data.sort(key=lambda x: x[-1])
 
-    def LoadPath(self, directory, pattern=None, show_hidden=True):
-        data = DirWithColumnsMixin.LoadPath(self, directory, pattern, show_hidden)
+    def LoadPath(self, directory):
+        data = DirWithColumnsMixin.LoadPath(self, directory)
         col, ascending = self.sort_col
         if col is not None:
             self.SortBy(data, col, ascending)
         return data
 
-    def LoadDir(self, item, directory, pattern=None, show_hidden=True):
-        DirTreeMixin.LoadDir(self, item, directory, pattern, show_hidden)
+    def LoadDir(self, item, directory):
+        DirTreeMixin.LoadDir(self, item, directory)
 
         # Give the TreeList control sometime to update the best column width
         # not perfect on Windows
