@@ -612,7 +612,7 @@ class EditorBase(wx.py.editwindow.EditWindow, FindEditorMixin, EditorThemeMixin)
         dp.send('frame.show_status_text',
                 text=f'{percent}% Ln:{line}/{total_lines}:{col}',
                 index=1,
-                width=150)
+                width=0)
 
     def OnUpdateUI(self, event):
         super().OnUpdateUI(event)

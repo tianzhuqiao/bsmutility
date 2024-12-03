@@ -8,6 +8,15 @@ import wx.py.dispatcher as dp
 import aui2 as aui
 from .utility import build_menu_from_list
 
+class FileDropTarget(wx.FileDropTarget):
+    def __init__(self, frame):
+        super().__init__()
+        self.frame = frame
+
+    def OnDropFiles(self, x, y, filenames):
+        for fname in filenames:
+            wx.CallAfter(self.frame.doOpenFile, filename=fname)
+        return True
 
 class AuiManagerPlus(aui.AuiManager):
     def __init__(self, managed_window=None, agwFlags=None):
@@ -76,6 +85,64 @@ def hinted_tuple_hook(obj):
         return obj
 
 
+class TaskBarIcon(wx.adv.TaskBarIcon):
+    TBMENU_RESTORE = wx.NewIdRef()
+    TBMENU_CLOSE = wx.NewIdRef()
+
+    def __init__(self, frame, icon, project_name):
+        super().__init__(iconType=wx.adv.TBI_DOCK)
+        self.frame = frame
+        self.project_name = project_name
+
+        # Set the image
+        self.SetIcon(icon, project_name)
+        self.imgidx = 1
+
+        # bind some events
+        #self.Bind(wx.EVT_TASKBAR_LEFT_DCLICK, self.OnTaskBarActivate)
+        self.Bind(wx.EVT_MENU, self.OnTaskBarActivate, id=self.TBMENU_RESTORE)
+        self.Bind(wx.EVT_MENU, self.OnTaskBarClose, id=self.TBMENU_CLOSE)
+
+
+    def CreatePopupMenu(self):
+        """
+        This method is called by the base class when it needs to popup
+        the menu for the default EVT_RIGHT_DOWN event.  Just create
+        the menu how you want it and return it from this function,
+        the base class takes care of the rest.
+        """
+        menu = wx.Menu()
+        menu.Append(self.TBMENU_RESTORE, f"Restore {self.project_name}")
+        menu.Append(self.TBMENU_CLOSE, f"Close {self.project_name}")
+        return menu
+
+
+    def MakeIcon(self, img):
+        """
+        The various platforms have different requirements for the
+        icon size...
+        """
+        if "wxMSW" in wx.PlatformInfo:
+            img = img.Scale(16, 16)
+        elif "wxGTK" in wx.PlatformInfo:
+            img = img.Scale(22, 22)
+        # wxMac can be any size upto 128x128, so leave the source img alone....
+        icon = wx.Icon(img.ConvertToBitmap())
+        return icon
+
+
+    def OnTaskBarActivate(self, evt):
+        if self.frame.IsIconized():
+            self.frame.Iconize(False)
+        if not self.frame.IsShown():
+            self.frame.Show(True)
+        self.frame.Raise()
+
+
+    def OnTaskBarClose(self, evt):
+        wx.CallAfter(self.frame.Close)
+
+
 class FramePlus(wx.Frame):
     CONFIG_NAME='bsm'
     ID_VM_RENAME = wx.NewIdRef()
@@ -106,6 +173,10 @@ class FramePlus(wx.Frame):
 
         self.closing = False
         self.InitMenu()
+
+        self.statusbar = None
+        self.statusbar_width = []
+        self.InitStatusbar()
 
         # append sys path
         sys.path.append('')
@@ -153,6 +224,10 @@ class FramePlus(wx.Frame):
             self.LoadPerspective()
             dp.send('frame.perspective_loaded')
 
+        # Create & Link the Drop Target Object to main window
+        self.SetDropTarget(FileDropTarget(self))
+
+        # bind events
         self.Bind(aui.EVT_AUINOTEBOOK_TAB_RIGHT_DOWN, self.OnPageRightDown)
         self.Bind(wx.EVT_RIGHT_DOWN, self.OnRightDown)
         self.Bind(wx.EVT_ACTIVATE, self.OnActivate)
@@ -184,6 +259,12 @@ class FramePlus(wx.Frame):
         # Connect Events
         self.Bind(wx.EVT_MENU, self.OnFileOpen, id=wx.ID_OPEN)
         self.Bind(wx.EVT_MENU, self.OnFileQuit, id=wx.ID_CLOSE)
+
+    def InitStatusbar(self):
+        self.statusbar = wx.StatusBar(self)
+        self.statusbar_width = [-1]
+        self.SetStatusBar(self.statusbar)
+        self.statusbar.SetStatusWidths(self.statusbar_width)
 
     def OnFileQuit(self, event):
         """close the program"""
@@ -334,7 +415,25 @@ class FramePlus(wx.Frame):
         self.doOpenFile(path)
 
     def ShowStatusText(self, text, index=0, width=-1):
-        pass
+        """set the status text"""
+        if self.statusbar is None:
+            return
+
+        if index >= len(self.statusbar_width):
+            exd = [0] * (index + 1 - len(self.statusbar_width))
+            self.statusbar_width.extend(exd)
+            self.statusbar.SetFieldsCount(index + 1)
+
+        if width == 0:
+            # auto calculate the width from text
+            dc = wx.ClientDC(self.statusbar)
+            width, _ = dc.GetTextExtent(text)
+            width += 20
+
+        if self.statusbar_width[index] != width:
+            self.statusbar_width[index] = width
+            self.statusbar.SetStatusWidths(self.statusbar_width)
+        self.statusbar.SetStatusText(text, index)
 
     def SetPanelTitle(self, pane, title, tooltip=None, name=None):
         """set the panel title"""
@@ -498,13 +597,8 @@ class FramePlus(wx.Frame):
             newid = id
             if newid is None:
                 newid = wx.NewIdRef()
-            if kind == 'Normal':
-                newitem = wx.MenuItem(menu,
-                                      newid,
-                                      label,
-                                      label,
-                                      kind=wx.ITEM_NORMAL)
-            elif kind == 'Check':
+
+            if kind == 'Check':
                 newitem = wx.MenuItem(menu,
                                       newid,
                                       label,
@@ -516,6 +610,13 @@ class FramePlus(wx.Frame):
                                       label,
                                       label,
                                       kind=wx.ITEM_RADIO)
+            else:
+                # 'Normal'
+                newitem = wx.MenuItem(menu,
+                                      newid,
+                                      label,
+                                      label,
+                                      kind=wx.ITEM_NORMAL)
             self.menuAddon[newid] = (rxsignal, updatesignal)
             child = menu.Append(newitem)
             self.Bind(wx.EVT_MENU, self.OnMenuAddOn, id=newid)
