@@ -145,7 +145,6 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
 
 class FramePlus(wx.Frame):
     CONFIG_NAME='bsm'
-    ID_VM_RENAME = wx.NewIdRef()
 
     def __init__(self,
                  parent,
@@ -374,8 +373,7 @@ class FramePlus(wx.Frame):
         if not pane.IsOk():
             return
         menu = wx.Menu()
-        if not pane.IsDestroyOnClose():
-            menu.Append(self.ID_VM_RENAME, "&Rename tab label")
+
         pane_menu = None
         if panel in self.paneMenu:
             if menu.GetMenuItemCount() > 0:
@@ -385,20 +383,10 @@ class FramePlus(wx.Frame):
         command = self.GetPopupMenuSelectionFromUser(menu)
         if command == wx.ID_NONE:
             return
-        if command == self.ID_VM_RENAME:
-            pane = self._mgr.GetPane(panel)
-            if not pane:
-                return
-            name = pane.caption
-            name = wx.GetTextFromUser("Type in the name:", "Input Name", name,
-                                      self)
-            # when user click 'cancel', name will be empty, ignore it.
-            if name and name != pane.caption:
-                self.SetPanelTitle(pane.window, name)
-        elif command != 0 and pane_menu is not None:
+        if command != 0 and pane_menu is not None:
             for m in pane_menu['menu']:
                 if command == m.get('id', None):
-                    dp.send(signal=pane_menu['rxsignal'], command=command, pane=panel)
+                    dp.send(signal=pane_menu['rxsignal'], command=command, pane=pane)
                     break
 
     def AddFileHistory(self, filename):
@@ -438,7 +426,8 @@ class FramePlus(wx.Frame):
     def SetPanelTitle(self, pane, title, tooltip=None, name=None):
         """set the panel title"""
         if pane:
-            self._mgr.SetPaneTitle(pane, title=str(title), tooltip=str(tooltip))
+            self._mgr.SetPaneTitle(pane, title=str(title), tooltip=tooltip)
+            pane.SetLabel(title)
             if name is not None:
                 info = self._mgr.GetPane(pane)
                 if info and info.IsOk():

@@ -11,12 +11,13 @@ import wx.svg
 import aui2 as aui
 from .dirtreectrl import DirListCtrl, EVT_DIR_OPEN, DirTreeCtrl, DirTreeList
 from .bsmxpm import backward_svg2, backward_gray_svg2, forward_svg2, \
-                    forward_gray_svg2, up_svg, home_svg2, more_svg, refresh_svg
+                    forward_gray_svg2, up_svg, home_svg2, more_svg, refresh_svg, \
+                    files_svg, history_svg, help_svg
 from .autocomplete import AutocompleteTextCtrl
 from .utility import FastLoadTreeCtrl, svg_to_bitmap, get_path_list, \
                      unescape_path
 from .editor_base import EditorBase
-from .bsminterface import Interface
+from .bsminterface import InterfaceRename
 from .auipathbar import AuiPathBar, EVT_AUIPATHBAR_CLICK
 from .findmixin import FindTreeMixin
 
@@ -797,7 +798,7 @@ class DirPanel(wx.Panel):
         elif idx == wx.ID_BACKWARD:
             event.Enable(h_idx > 0)
 
-class MiscTools(Interface):
+class MiscTools(InterfaceRename):
 
     panelHistory = None
     panelHelp = None
@@ -813,16 +814,23 @@ class MiscTools(Interface):
         # history panel
         if history_panel:
             cls.panelHistory = HistoryPanel(frame)
+            bmp = svg_to_bitmap(history_svg, win=cls.panelHistory)
             dp.send(signal='frame.add_panel',
                     panel=cls.panelHistory,
                     title="History",
                     showhidemenu='View:Panels:Command History',
                     active=active,
                     direction=direction,
-                    name="history")
+                    name="history",
+                    icon=bmp,
+                    pane_menu={'rxsignal': 'misctool.pane_menu',
+                               'menu': [{'id':cls.ID_PANE_RENAME, 'label':'Rename'}]
+                               }
+                    )
         # help panel
         if help_panel:
             cls.panelHelp = HelpPanel(frame)
+            bmp = svg_to_bitmap(help_svg, win=cls.panelHelp)
             dp.send(signal='frame.add_panel',
                     panel=cls.panelHelp,
                     title="Help",
@@ -830,10 +838,16 @@ class MiscTools(Interface):
                     showhidemenu='View:Panels:Command Help',
                     active=active,
                     direction=direction,
-                    name='help')
+                    name='help',
+                    icon=bmp,
+                    pane_menu={'rxsignal': 'misctool.pane_menu',
+                               'menu': [{'id':cls.ID_PANE_RENAME, 'label':'Rename'}]
+                               }
+                    )
         # directory panel
         if dir_panel:
             cls.panelDir = DirPanel(frame)
+            bmp = svg_to_bitmap(files_svg, win=cls.panelDir)
             dp.send(signal='frame.add_panel',
                     panel=cls.panelDir,
                     title="Browsing",
@@ -841,7 +855,22 @@ class MiscTools(Interface):
                     showhidemenu='View:Panels:Browsing',
                     active=active,
                     direction=direction,
-                    name='browsing')
+                    name='browsing',
+                    icon=bmp,
+                    pane_menu={'rxsignal': 'misctool.pane_menu',
+                               'menu': [{'id':cls.ID_PANE_RENAME, 'label':'Rename'}]
+                               }
+                    )
+
+        dp.connect(cls.PaneMenu, 'misctool.pane_menu')
+
+    @classmethod
+    def PaneMenu(cls, pane, command):
+        if not pane or pane.window not in [cls.panelHistory, cls.panelHelp, cls.panelDir]:
+            return
+
+        if command == cls.ID_PANE_RENAME:
+            cls.RenamePane(pane)
 
     @classmethod
     def uninitializing(cls):

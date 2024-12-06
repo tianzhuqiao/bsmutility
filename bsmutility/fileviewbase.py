@@ -1560,6 +1560,9 @@ class FileViewBase(Interface):
 
     @classmethod
     def PaneMenu(cls, pane, command):
+        if not pane:
+            return
+        pane = pane.window
         if not pane or not isinstance(pane, cls.panel_type):
             return
         if command in [cls.ID_PANE_COPY_PATH, cls.ID_PANE_COPY_PATH_REL,

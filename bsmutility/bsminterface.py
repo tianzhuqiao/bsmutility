@@ -31,3 +31,18 @@ class Interface:
         dp.disconnect(receiver=cls.initialized, signal='frame.initialized')
         dp.disconnect(receiver=cls.uninitializing, signal='frame.exiting')
         dp.disconnect(receiver=cls.uninitialized, signal='frame.exit')
+
+
+class InterfaceRename(Interface):
+    ID_PANE_RENAME = wx.NewIdRef()
+
+    @classmethod
+    def RenamePane(cls, pane):
+        if not pane:
+            return
+        name = pane.caption
+        name_new = wx.GetTextFromUser("Enter the new name:", "Input Name", name,
+                                  cls.frame)
+        # if user click 'cancel', name will be empty, ignore it.
+        if name_new and name_new != name:
+            dp.send('frame.set_panel_title', pane=pane.window, title=name_new)
