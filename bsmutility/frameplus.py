@@ -2,6 +2,7 @@ import sys
 import traceback
 import importlib
 import json
+import pkgutil
 import six
 import wx
 import wx.py.dispatcher as dp
@@ -289,9 +290,17 @@ class FramePlus(wx.Frame):
     def GetAbsoluteAddonPath(self, pkg):
         return pkg
 
+    def GetAddOnPrefix(self):
+        return 'bsm_'
+
     def InitAddOn(self, modules, debug=False):
         if not modules:
             modules = self.GetDefaultAddonPackages()
+
+        # load the installed addon package
+        addon_prefix = self.GetAddOnPrefix()
+        modules += [name for _, name, _ in pkgutil.iter_modules() if name.startswith(addon_prefix)]
+
         for module in modules:
             module = module.split('+')
             options = {'debug': debug}
