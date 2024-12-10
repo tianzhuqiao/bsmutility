@@ -42,13 +42,12 @@ class EditorThemeMixin:
         themes = None
         if resp and resp[0][1] is not None:
             themes = resp[0][1]
-        theme_default = 'solarized-dark' if 'dark' in theme else 'solarized-light'
         themes_default = {'color': self.GetThemeColor(theme),
                           'font': self.GetThemeFont(theme)}
         if themes is None:
             themes = themes_default
             # save the theme in configuration as example
-            dp.send('frame.set_config', group='theme', **{theme_default: themes_default})
+            dp.send('frame.set_config', group='theme', **{theme: themes_default})
         else:
             for item in ['color', 'font']:
                 if item not in themes:
@@ -77,6 +76,12 @@ class EditorThemeMixin:
         cyan = CLR['cyan']
         red = CLR['red']
         blue = CLR['blue']
+        if 'plain' in theme:
+            green = bk
+            cyan = bk
+            red = bk
+            blue = bk
+
         c = _dict()
         c.background = bk
         c.background_highlight = bkh

@@ -10,8 +10,8 @@ from wx import stc
 import wx.py.dispatcher as dp
 import aui2 as aui
 from .bsmxpm import open_svg, refresh_svg, save_svg, save_gray_svg, saveas_svg, \
-                    play_svg, debug_svg, more_svg, indent_inc_svg, indent_dec_svg, \
-                    check_svg, search_svg
+                    play_svg, play_grey_svg, debug_svg, debug_grey_svg, more_svg, \
+                    indent_inc_svg, indent_dec_svg, check_svg, check_grey_svg, search_svg
 from .pymgr_helpers import Gcm
 from .utility import svg_to_bitmap
 from .editor_base import *
@@ -138,10 +138,16 @@ class PyEditor(EditorBase):
 
         self.breakpointlist = {}
 
+    def IsPythonScript(self):
+        _, ext = os.path.splitext(self.filename)
+        return ext == '.py'
+
     def OnMotion(self, event):
         super().OnMotion(event)
         event.Skip()
 
+        if not self.IsPythonScript():
+            return
         dc = wx.ClientDC(self)
         pos = event.GetLogicalPosition(dc)
 
@@ -196,8 +202,9 @@ class PyEditor(EditorBase):
         if wx.Platform != '__WXMAC__':
             item.SetBitmap(svg_to_bitmap(indent_dec_svg, win=self))
         menu.AppendSeparator()
-        menu.Append(self.ID_RUN_LINE, 'Run selection/line')
-        menu.AppendSeparator()
+        if self.IsPythonScript():
+            menu.Append(self.ID_RUN_LINE, 'Run selection/line')
+            menu.AppendSeparator()
         menu.AppendCheckItem(self.ID_WORD_WRAP, 'Word wrap')
         menu.Check(self.ID_WORD_WRAP, self.GetWrapMode() != wx.stc.STC_WRAP_NONE)
         return menu
@@ -527,11 +534,11 @@ class PyEditorPanel(PanelBase):
             (wx.ID_SAVE, 'Save', save_svg, save_gray_svg, 'Save script (Ctrl+S)'),
             (wx.ID_SAVEAS, 'Save As', saveas_svg, None, 'Save script as'),
             (None, None, None, None, None),
-            (self.ID_RUN_SCRIPT, 'Execute', play_svg, None,
+            (self.ID_RUN_SCRIPT, 'Execute', play_svg, play_grey_svg,
              'Execute the script'),
             (None, None, None, None, None),
-            (self.ID_CHECK_SCRIPT, 'Check', check_svg, None, 'Check the script'),
-            (self.ID_DEBUG_SCRIPT, 'Debug', debug_svg, None, 'Debug the script'),
+            (self.ID_CHECK_SCRIPT, 'Check', check_svg, check_grey_svg, 'Check the script'),
+            (self.ID_DEBUG_SCRIPT, 'Debug', debug_svg, debug_grey_svg, 'Debug the script'),
             (None, None, None, None, "stretch"),
             (self.ID_MORE, 'More', more_svg, None, 'More'),
         )
@@ -728,7 +735,24 @@ class PyEditorPanel(PanelBase):
         """open file"""
         self.editor.LoadFile(filename)
         self.was_modified = False
+
         super().Load(filename, add_to_history=add_to_history)
+
+        theme = 'solarized-dark'
+        resp = dp.send('frame.get_config', group='editor', key='theme')
+        if resp and resp[0][1] is not None:
+            theme = resp[0][1]
+        if self.editor.IsPythonScript():
+            self.editor.SetupColor(theme)
+            self.editor.SetupColorPython(theme)
+            if self.editor2:
+                self.editor2.SetupColor(theme)
+                self.editor2.SetupColorPython(theme)
+        else:
+            theme = 'plain-dark' if 'dark' in theme else 'plain-light'
+            self.editor.SetupColor(theme)
+            if self.editor2:
+                self.editor2.SetupColor(theme)
 
     def OnBtnOpen(self, event):
         """open the script"""
@@ -796,12 +820,14 @@ class PyEditorPanel(PanelBase):
         eid = event.GetId()
         if eid == wx.ID_SAVE:
             event.Enable(self.editor.GetModify())
-        elif eid == self.ID_DEBUG_SCRIPT:
+        elif eid == self.ID_DEBUG_SCRIPT and self.editor.IsPythonScript():
             resp = dp.send('debugger.debugging')
             if resp:
                 event.Enable(not resp[0][1])
         elif eid == wx.ID_REFRESH:
             event.Enable(self.filename != "")
+        elif eid in [self.ID_DEBUG_SCRIPT, self.ID_CHECK_SCRIPT, self.ID_RUN_SCRIPT]:
+            event.Enable(self.editor.IsPythonScript())
 
     def OnShowFindReplace(self, event):
         """Find and Replace dialog and action."""
@@ -998,12 +1024,26 @@ class Editor(FileViewBase):
     ID_NEW = wx.NOT_FOUND
 
     @classmethod
+    def ignore_file_ext(cls):
+        return []
+
+    @classmethod
     def check_filename(cls, filename):
         if filename is None:
             return True
 
         _, ext = os.path.splitext(filename)
-        return (ext.lower() in ['.py', 'txt'])
+        if ext in cls.ignore_file_ext():
+            return False
+
+        try:
+            with open(filename, 'tr') as check_file:  # try open file in text mode
+                check_file.read()
+                return True
+        except:  # if fail then file is non-text (binary)
+            return False
+
+        return (ext.lower() in ['.py', '.txt'])
 
     @classmethod
     def initialize(cls, frame, **kwargs):
