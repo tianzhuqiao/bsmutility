@@ -432,15 +432,15 @@ class FramePlus(wx.Frame):
             self.statusbar.SetStatusWidths(self.statusbar_width)
         self.statusbar.SetStatusText(text, index)
 
-    def SetPanelTitle(self, pane, title, tooltip=None, name=None):
+    def SetPanelTitle(self, pane, title, tooltip=None, name=None, icon=None):
         """set the panel title"""
         if pane:
-            self._mgr.SetPaneTitle(pane, title=str(title), tooltip=tooltip)
-            pane.SetLabel(title)
-            if name is not None:
-                info = self._mgr.GetPane(pane)
-                if info and info.IsOk():
+            info = self._mgr.GetPane(pane)
+            if info and info.IsOk():
+                if name is not None:
                     info.Name(name)
+            self._mgr.SetPaneTitle(pane, title=str(title), tooltip=tooltip, icon=icon)
+            pane.SetLabel(title)
             self.UpdatePaneMenuLabel()
 
     def SetConfig(self, group, **kwargs):
