@@ -352,3 +352,72 @@ def create_shortcut(name, icns, ico, svg):
             pyshortcuts.make_shortcut(script=name, name=name, icon=svg, noexe=True)
     except:
         traceback.print_exc(file=sys.stdout)
+
+
+def get_file_icon(filename, size=16, win=None):
+    """Helper function. Called for files and collects all the necessary
+    icons into in image list which is re-passed into the tree every time
+    (imagelists are a lame way to handle images)"""
+    def _getFileExtension(filename):
+        """Helper function for getting a file's extension"""
+        # check if directory
+        if not os.path.isdir(filename):
+            # search for the last period
+            _, ext = os.path.splitext(filename)
+            return ext
+        else:
+            return 'directory'
+
+    ext = _getFileExtension(filename)
+    ext = ext.lower()
+
+    def _icon2bitmap(icon):
+        bitmap = wx.Bitmap()
+        bitmap.CopyFromIcon(icon)
+        image = bitmap.ConvertToImage()
+        scale = 1
+        if win is not None and not wx.Platform == '__WXMSW__':
+            scale = win.GetDPIScaleFactor()
+        image = image.Scale(int(size*scale), int(size*scale), wx.IMAGE_QUALITY_HIGH)
+        bitmap = image.ConvertToBitmap()
+        bitmap.SetScaleFactor(scale)
+        return bitmap
+
+    excluded = ['', '.exe', '.ico']
+    # do nothing if no extension found or in excluded list
+    if ext not in excluded:
+        # sometimes it just crashes
+        try:
+            # use mimemanager to get filetype and icon
+            # lookup extension
+            filetype = wx.TheMimeTypesManager.GetFileTypeFromExtension(
+                ext)
+
+            if hasattr(filetype, 'GetIconInfo'):
+                info = filetype.GetIconInfo()
+
+                if info is not None:
+                    icon = info[0]
+                    if not icon.IsOk():
+                        icon = wx.Icon()
+                        icon.LoadFile(info[1], type=wx.BITMAP_TYPE_ICON)
+                    if icon.IsOk():
+                        bitmap = _icon2bitmap(icon)
+
+                        return bitmap
+            return None
+        except:
+            return None
+
+    elif ext in ['.exe', '.ico']:
+        # if exe, get first icon out of it
+        try:
+            iloc = wx.IconLocation(filename, 0)
+            icon = wx.Icon(iloc)
+            if icon.IsOk():
+                bitmap = _icon2bitmap(icon)
+                return bitmap
+        except:
+            pass
+
+    return None

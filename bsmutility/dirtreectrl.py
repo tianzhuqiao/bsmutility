@@ -18,7 +18,7 @@ import wx.py.dispatcher as dp
 import wx.lib.agw.hypertreelist as HTL
 from .findlistctrl import ListCtrlBase
 from .findmixin import FindTreeMixin
-from .utility import open_file_with_default_app, \
+from .utility import open_file_with_default_app, get_file_icon, \
                      show_file_in_finder, get_file_finder_name
 wxEVT_DIR_OPEN = wx.NewEventType()
 
@@ -245,10 +245,8 @@ class DirMixin:
         # check if directory
         if not os.path.isdir(filename):
             # search for the last period
-            index = filename.rfind('.')
-            if index > -1:
-                return filename[index:]
-            return ''
+            _, ext = os.path.splitext(filename)
+            return ext
         else:
             return 'directory'
 
@@ -259,19 +257,6 @@ class DirMixin:
         ext = self.getFileExtension(filename)
         ext = ext.lower()
 
-        def _icon2bitmap(icon):
-            bitmap = wx.Bitmap()
-            bitmap.CopyFromIcon(icon)
-            image = bitmap.ConvertToImage()
-            scale = 1
-            if not wx.Platform == '__WXMSW__':
-                scale = self.GetDPIScaleFactor()
-            image = image.Scale(int(16*scale), int(16*scale), wx.IMAGE_QUALITY_HIGH)
-            bitmap = image.ConvertToBitmap()
-            bitmap.SetScaleFactor(scale)
-            return bitmap
-
-
         excluded = ['', '.exe', '.ico']
         # do nothing if no extension found or in excluded list
         if ext not in excluded:
@@ -280,54 +265,27 @@ class DirMixin:
             if ext not in self.iconentries:
 
                 # sometimes it just crashes
-                try:
-                    # use mimemanager to get filetype and icon
-                    # lookup extension
-                    filetype = wx.TheMimeTypesManager.GetFileTypeFromExtension(
-                        ext)
+                bitmap = get_file_icon(filename)
+                if bitmap is not None:
+                    # add to imagelist and store returned key
+                    iconkey = self.imagelist.Add(bitmap)
+                    self.iconentries[ext] = iconkey
+                    # update tree with new imagelist - inefficient
+                    #self.SetImageList(self.imagelist)
 
-                    if hasattr(filetype, 'GetIconInfo'):
-                        info = filetype.GetIconInfo()
-
-                        if info is not None:
-                            icon = info[0]
-                            if not icon.IsOk():
-                                icon = wx.Icon()
-                                icon.LoadFile(info[1], type=wx.BITMAP_TYPE_ICON)
-                            if icon.IsOk():
-                                bitmap = _icon2bitmap(icon)
-
-                                # add to imagelist and store returned key
-                                iconkey = self.imagelist.Add(bitmap)
-                                self.iconentries[ext] = iconkey
-                                # update tree with new imagelist - inefficient
-                                self.SetImageList(self.imagelist)
-
-                                # return new key
-                                return iconkey
-                    return self.iconentries['default']
-                except:
-                    return self.iconentries['default']
-
-            # already have icon, return key
-            else:
+            if ext in self.iconentries:
                 return self.iconentries[ext]
 
-        # if exe, get first icon out of it
         elif ext in ['.exe', '.ico']:
+            # if exe, get first icon out of it
             if filename not in self.iconentries:
-                try:
-                    iloc = wx.IconLocation(filename, 0)
-                    icon = wx.Icon(iloc)
-                    if icon.IsOk():
-                        bitmap = _icon2bitmap(icon)
-                        # add to imagelist and store returned key
-                        iconkey = self.imagelist.Add(bitmap)
-                        self.iconentries[filename] = iconkey
-                        # update tree with new imagelist - inefficient
-                        self.SetImageList(self.imagelist)
-                except:
-                    pass
+                bitmap = get_file_icon(filename)
+                if bitmap is not None:
+                    # add to imagelist and store returned key
+                    iconkey = self.imagelist.Add(bitmap)
+                    self.iconentries[filename] = iconkey
+                    # update tree with new imagelist - inefficient
+                    #self.SetImageList(self.imagelist)
             if filename in self.iconentries:
                 return self.iconentries[filename]
 

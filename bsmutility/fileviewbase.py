@@ -18,7 +18,7 @@ from .bsmxpm import open_svg, refresh_svg, more_svg
 from .utility import FastLoadTreeCtrl, _dict, send_data_to_shell, get_variable_name
 from .utility import svg_to_bitmap, build_tree, flatten_tree
 from .utility import get_file_finder_name, show_file_in_finder, \
-                     get_tree_item_path, get_tree_item_name
+                     get_tree_item_path, get_tree_item_name, get_file_icon
 from .autocomplete import AutocompleteTextCtrl
 from .bsminterface import Interface
 from .signalselsettingdlg import SignalSelSettingDlg, ConvertManagingDlg
@@ -1248,6 +1248,22 @@ class PanelBase(wx.Panel):
     def GetCaption(self):
         return self.GetFileName()
 
+    def GetIcon(self):
+        icon = None
+        if isinstance(self.filename, str):
+            icon = get_file_icon(self.filename)
+        if icon is not None:
+            return icon
+
+        scale = 1
+        if not wx.Platform == '__WXMSW__':
+            # looks like Windows doesn't support high DPI image (wx 4.2.2)
+            scale = self.GetDPIScaleFactor()
+        icon = wx.ArtProvider.GetBitmap(wx.ART_NORMAL_FILE, wx.ART_OTHER, (int(16*scale), int(16*scale)))
+        icon.SetScaleFactor(scale)
+
+        return icon
+
     def Load(self, filename, add_to_history=True):
         """load the file"""
         self.filename = filename
@@ -1255,8 +1271,9 @@ class PanelBase(wx.Panel):
         if add_to_history:
             dp.send('frame.add_file_history', filename=filename)
         title = self.GetCaption()
+        icon = self.GetIcon()
         dp.send('frame.set_panel_title', pane=self, title=title, tooltip=str(filename),
-                name=str(filename))
+                name=str(filename), icon=self.GetIcon())
 
     def Destroy(self):
         """
@@ -1549,7 +1566,8 @@ class FileViewBase(Interface):
                                {'id': cls.ID_PANE_SHOW_IN_BROWSING, 'label':'Reveal in Browsing panel'},
                                ]},
                            tooltip=str(filename) or "",
-                           name=str(filename) or "")
+                           name=str(filename) or "",
+                           icon=manager.GetIcon())
         # activate the manager
         if manager:
             if activate:

@@ -722,7 +722,7 @@ class PyEditorPanel(PanelBase):
 
     def UpdateCaption(self):
         dp.send('frame.set_panel_title', pane=self, title=self.GetCaption(),
-                tooltip=self.filename, name=self.filename)
+                tooltip=self.filename, name=self.filename, icon=self.GetIcon())
 
     def OnCodeModified(self, event):
         """called when the file is modified"""
