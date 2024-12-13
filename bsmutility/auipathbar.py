@@ -49,11 +49,14 @@ class AuiPathBar(wx.Control):
 
         self.tb = aui.AuiToolBar(self, agwStyle=agwStyle | aui.AUI_TB_HORZ_TEXT)
         art = self.tb.GetArtProvider()
-        art.SetDropDownBitmap(svg_to_bitmap(chevron_right_svg, win=self),
-                              svg_to_bitmap(chevron_right_grey_svg, win=self))
 
-        art.SetOverflowBitmap(svg_to_bitmap(double_right_svg, win=self),
-                              svg_to_bitmap(double_right_grey_svg, win=self))
+        clr_active = wx.SystemSettings.GetColour(wx.SYS_COLOUR_BTNTEXT)
+        clr_inactive = wx.SystemSettings.GetColour(wx.SYS_COLOUR_GRAYTEXT)
+        svg = self._update_svg(chevron_right_svg, clr_dst=clr_active)
+        svg_grey = self._update_svg(chevron_right_svg, clr_dst=clr_inactive)
+        art.SetDropDownBitmap(svg_to_bitmap(svg, win=self),
+                              svg_to_bitmap(svg_grey, win=self))
+
         self.tb.Realize()
 
         self.address = AutocompleteComboBox(self, completer=self.completer)
@@ -68,6 +71,7 @@ class AuiPathBar(wx.Control):
         self.address.Bind(wx.EVT_KILL_FOCUS, self.OnKillFocus)
         self.Bind(wx.EVT_TEXT_ENTER, self.OnGoToNewAddress, self.address)
         self.Bind(wx.EVT_COMBOBOX, self.OnGoToAddress, self.address)
+        self.Bind(wx.EVT_SYS_COLOUR_CHANGED, self.OnSysColourChanged)
 
     def completer(self, query):
 
@@ -110,8 +114,10 @@ class AuiPathBar(wx.Control):
                 self.tb.SetToolDropDown(self.ids_path[idx], True)
         self.tb.AddStretchSpacer(1)
         if self._show_path_edit:
+            clr_active = wx.SystemSettings.GetColour(wx.SYS_COLOUR_BTNTEXT)
+            svg = self._update_svg(down_svg, clr_dst=clr_active)
             self.tb.AddSimpleTool(self.ID_PATH_EDIT, "",
-                              svg_to_bitmap(down_svg, win=self), "")
+                              svg_to_bitmap(svg, win=self), "")
 
         self.tb.Realize()
         self.Layout()
@@ -244,3 +250,25 @@ class AuiPathBar(wx.Control):
         path = self.address.GetValue()
         self.ShowPathEdit(False)
         self.SendPathevent(path)
+
+    def _update_svg(self, svg, clr_src='#5f6368', clr_dst=None):
+        if clr_dst is None:
+            return
+        svg = svg.replace(clr_src, clr_dst.GetAsString(wx.C2S_HTML_SYNTAX)[:7])
+        svg = svg.replace('fill-opacity="1"', f'fill-opacity="{clr_dst.GetAlpha()/255.0}"')
+        return svg
+
+    def OnSysColourChanged(self, event):
+        art = self.tb.GetArtProvider()
+
+        clr_active = wx.SystemSettings.GetColour(wx.SYS_COLOUR_BTNTEXT)
+        clr_inactive = wx.SystemSettings.GetColour(wx.SYS_COLOUR_GRAYTEXT)
+        svg = self._update_svg(chevron_right_svg, clr_dst=clr_active)
+        svg_grey = self._update_svg(chevron_right_svg, clr_dst=clr_inactive)
+        art.SetDropDownBitmap(svg_to_bitmap(svg, win=self),
+                              svg_to_bitmap(svg_grey, win=self))
+
+        tool = self.tb.FindTool(self.ID_PATH_EDIT)
+        if tool is not None:
+            svg = self._update_svg(down_svg, clr_dst=clr_active)
+            tool.SetBitmap(svg_to_bitmap(svg, win=self))

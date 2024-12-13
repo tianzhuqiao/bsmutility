@@ -4,8 +4,9 @@ import wx
 import wx.py.dispatcher as dp
 import wx.lib.mixins.listctrl as listmix
 import aui2 as aui
-from .bsmxpm import (run_svg, run_grey_svg, step_over_svg, step_over_grey_svg, step_into_svg, \
-                     step_into_grey_svg, step_out_svg, step_out_grey_svg, stop_svg, stop_grey_svg)
+from .bsmxpm import (run_svg, run_grey_svg, step_over_svg, step_over_grey_svg,
+                     step_into_svg, step_into_grey_svg, step_out_svg,
+                     step_out_grey_svg, stop_svg, stop_grey_svg, layer_svg)
 
 from .utility import svg_to_bitmap
 from .bsminterface import Interface
@@ -116,12 +117,14 @@ class DebugTool(Interface):
 
         # stack panel
         cls.panelStack = StackPanel(frame)
+        bmp = svg_to_bitmap(layer_svg, win=cls.panelStack)
         dp.send('frame.add_panel',
                 panel=cls.panelStack,
                 title="Call Stack",
                 active=False,
                 showhidemenu='View:Panels:Call Stack',
-                name='call_stack')
+                name='call_stack',
+                icon=bmp)
 
         # debugger toolbar
         dp.send('frame.add_menu',

@@ -7,7 +7,8 @@ import six
 import wx
 import wx.py.dispatcher as dp
 import aui2 as aui
-from .utility import build_menu_from_list
+from .utility import build_menu_from_list, svg_to_bitmap
+from .bsmxpm import restore_svg
 
 class FileDropTarget(wx.FileDropTarget):
     def __init__(self, frame):
@@ -162,6 +163,7 @@ class FramePlus(wx.Frame):
         self._mgr = AuiManagerPlus()
         self._mgr.SetManagedWindow(self)
         self._mgr.GetArtProvider().SetMetric(aui.AUI_DOCKART_PANE_BUTTON_SIZE, 25)
+        self._mgr.SetRestoreButtonBitmap(svg_to_bitmap(restore_svg, win=self))
         self.menuAddon = {}
         self.paneAddon = {}
         self.paneMenu = {}
