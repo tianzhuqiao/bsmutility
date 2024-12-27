@@ -1331,6 +1331,7 @@ class PanelBase(wx.Panel):
 class PanelNotebookBase(PanelBase):
     ID_MORE = wx.NewIdRef()
     ID_CONFIRM_CLOSE = wx.NewIdRef()
+    ID_SHOW_TAB_BOTTOM = wx.NewIdRef()
     ID_CONVERT_CUSTOM = wx.NewIdRef()
     ID_CONVERT_MANAGE = wx.NewIdRef()
 
@@ -1341,7 +1342,8 @@ class PanelNotebookBase(PanelBase):
         self.init_toolbar()
         self.tb.Realize()
 
-        self.notebook = aui.AuiNotebook(self, agwStyle=aui.AUI_NB_TOP | aui.AUI_NB_TAB_SPLIT | aui.AUI_NB_SCROLL_BUTTONS | wx.NO_BORDER)
+        tab_pos_style = aui.AUI_NB_BOTTOM if self.GetOption('show_tab_at_bottom', False) else aui.AUI_NB_TOP
+        self.notebook = aui.AuiNotebook(self, agwStyle=tab_pos_style | aui.AUI_NB_TAB_SPLIT | aui.AUI_NB_SCROLL_BUTTONS | wx.NO_BORDER)
 
         self.tree = None
         self.init_pages()
@@ -1391,6 +1393,10 @@ class PanelNotebookBase(PanelBase):
             menu = wx.Menu()
             mitem = menu.AppendCheckItem(self.ID_CONFIRM_CLOSE, "Confirm before close window")
             mitem.Check(self.GetConfirmClose())
+
+            mitem = menu.AppendCheckItem(self.ID_SHOW_TAB_BOTTOM, "Show tabs at the bottom")
+            mitem.Check(self.GetOption('show_tab_at_bottom', False))
+
             menu.AppendSeparator()
             menu.Append(self.ID_CONVERT_CUSTOM, "Add custom convert")
             converts = self.tree.GetCustomizedConvert()
@@ -1398,14 +1404,33 @@ class PanelNotebookBase(PanelBase):
                 menu.Append(self.ID_CONVERT_MANAGE, "Manage custom convert")
         return menu
 
-    def SetConfirmClose(self, confirm):
-        resp = dp.send('frame.set_config', group=self.__class__.__name__, confirm_when_close=confirm)
+    def SetOption(self, **kwargs):
+        resp = dp.send('frame.set_config', group=self.__class__.__name__, **kwargs)
 
-    def GetConfirmClose(self):
-        resp = dp.send('frame.get_config', group=self.__class__.__name__, key='confirm_when_close')
+    def GetOption(self, key, default=None):
+        resp = dp.send('frame.get_config', group=self.__class__.__name__, key=key)
         if resp and resp[0][1] is not None:
             return resp[0][1]
-        return True
+        return default
+
+    def SetConfirmClose(self, confirm):
+        self.SetOption(confirm_when_close=confirm)
+
+    def GetConfirmClose(self):
+        return self.GetOption('confirm_when_close', default=True)
+
+
+    def SetTabPosition(self, style):
+        nb_style = self.notebook.GetAGWWindowStyleFlag()
+        if style & aui.AUI_NB_BOTTOM:
+            nb_style &= ~aui.AUI_NB_TOP
+            nb_style |= aui.AUI_NB_BOTTOM
+        else:
+            nb_style &= ~aui.AUI_NB_BOTTOM
+            nb_style |= aui.AUI_NB_TOP
+        self.notebook.SetAGWWindowStyleFlag(nb_style)
+        self.notebook.Refresh()
+        self.notebook.Update()
 
     def OnProcessCommand(self, event):
         eid = event.GetId()
@@ -1415,6 +1440,12 @@ class PanelNotebookBase(PanelBase):
                 self.PopupMenu(menu)
         elif eid == self.ID_CONFIRM_CLOSE:
             self.SetConfirmClose(not self.GetConfirmClose())
+        elif eid == self.ID_SHOW_TAB_BOTTOM:
+            tab_at_bottom = not self.GetOption('show_tab_at_bottom', False)
+            style = aui.AUI_NB_BOTTOM if tab_at_bottom  else aui.AUI_NB_TOP
+            for m in self.get_all_managers():
+                m.SetTabPosition(style)
+            self.SetOption(show_tab_at_bottom=tab_at_bottom)
         elif eid == self.ID_CONVERT_CUSTOM:
             if isinstance(self.tree, TreeCtrlBase):
                 self.tree.AddCustomizedConvert()
@@ -1565,8 +1596,8 @@ class FileViewBase(Interface):
                                {'id': cls.ID_PANE_SHOW_IN_FINDER, 'label':f'Reveal in  {get_file_finder_name()}'},
                                {'id': cls.ID_PANE_SHOW_IN_BROWSING, 'label':'Reveal in Browsing panel'},
                                ]},
-                           tooltip=str(filename) or "",
-                           name=str(filename) or "",
+                           tooltip=str(filename) if filename else "",
+                           name=str(filename) if filename else "",
                            icon=manager.GetIcon())
         # activate the manager
         if manager:

@@ -147,6 +147,7 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
 
 class FramePlus(wx.Frame):
     CONFIG_NAME='bsm'
+    ID_SHOW_TAB_BOTTOM = wx.NewIdRef()
 
     def __init__(self,
                  parent,
@@ -213,6 +214,11 @@ class FramePlus(wx.Frame):
                   id=self.ids_file_history[0],
                   id2=self.ids_file_history[-1])
 
+
+
+        tab_at_bottom = self.GetConfig('mainframe', 'show_tab_at_bottom', default=True)
+        self.SetTabPosition(aui.AUI_NB_BOTTOM if tab_at_bottom else aui.AUI_NB_TOP)
+
         # load addon
         self.addon = {}
         self.InitAddOn(kwargs.get('module', ()),
@@ -257,10 +263,15 @@ class FramePlus(wx.Frame):
         self.AddMenu('&View:Panels', kind="Popup")
 
         self.AddMenu('&Tools', kind="Popup", autocreate=True)
+        self.AddMenu('&Tools:Show tabs at the bottom', id=self.ID_SHOW_TAB_BOTTOM,
+                     autocreate=True, kind="Check")
+        self.AddMenu('&Tools:Sep', kind="Separator")
 
         # Connect Events
         self.Bind(wx.EVT_MENU, self.OnFileOpen, id=wx.ID_OPEN)
         self.Bind(wx.EVT_MENU, self.OnFileQuit, id=wx.ID_CLOSE)
+        self.Bind(wx.EVT_MENU, self.OnOptions, id=self.ID_SHOW_TAB_BOTTOM)
+        self.Bind(wx.EVT_UPDATE_UI, self.OnMenuCmdUI, id=self.ID_SHOW_TAB_BOTTOM)
 
     def InitStatusbar(self):
         self.statusbar = wx.StatusBar(self)
@@ -285,6 +296,22 @@ class FramePlus(wx.Frame):
         if dlg.ShowModal() == wx.ID_OK:
             for fname in dlg.GetFilenames():
                 self.doOpenFile(fname)
+
+    def SetTabPosition(self, style):
+        nb_style = self._mgr.GetAutoNotebookStyle()
+        if style & aui.AUI_NB_BOTTOM:
+            nb_style &= ~aui.AUI_NB_TOP
+            nb_style |= aui.AUI_NB_BOTTOM
+        else:
+            nb_style &= ~aui.AUI_NB_BOTTOM
+            nb_style |= aui.AUI_NB_TOP
+        self._mgr.SetAutoNotebookStyle(nb_style)
+
+    def OnOptions(self, event):
+        eid = event.GetId()
+        if eid == self.ID_SHOW_TAB_BOTTOM:
+            style = self._mgr.GetAutoNotebookStyle()
+            self.SetTabPosition(aui.AUI_NB_TOP if style & aui.AUI_NB_BOTTOM else aui.AUI_NB_BOTTOM)
 
     def GetDefaultAddonPackages(self):
         return []
@@ -459,7 +486,7 @@ class FramePlus(wx.Frame):
             self.config.SetPath(group)
             self.config.Write(key, value)
 
-    def GetConfig(self, group, key=None):
+    def GetConfig(self, group, key=None, default=None):
         if not group.startswith('/'):
             group = '/' + group
         if self.config.HasGroup(group):
@@ -480,7 +507,7 @@ class FramePlus(wx.Frame):
                 if value.startswith('__bsm__'):
                     value = json.loads(value[7:], object_hook=hinted_tuple_hook)
                 return value
-        return None
+        return default
 
     def LoadPerspective(self):
         perspective = self.GetConfig('mainframe', 'perspective')
@@ -527,6 +554,8 @@ class FramePlus(wx.Frame):
         pos = self.GetPosition()
         self.SetConfig('mainframe', frame_size=(sz[0], sz[1]), frame_pos=(pos[0], pos[1]))
         self.SetConfig('mainframe', perspective=self._mgr.SavePerspective())
+        tab_at_bottom = (self._mgr.GetAutoNotebookStyle() & aui.AUI_NB_BOTTOM) != 0
+        self.SetConfig('mainframe', show_tab_at_bottom=tab_at_bottom)
 
         # close all addon
         dp.send('frame.exit')
@@ -691,12 +720,17 @@ class FramePlus(wx.Frame):
 
     def OnMenuCmdUI(self, event):
         idx = event.GetId()
+
+        if idx == self.ID_SHOW_TAB_BOTTOM:
+            event.Check(self._mgr.GetAutoNotebookStyle() & aui.AUI_NB_BOTTOM)
+
         signal = self.menuAddon.get(idx, None)
         if signal:
             signal = signal[1]
             dp.send(signal=signal, event=event)
         else:
             event.Enable(True)
+
 
     def AddPanel(self,
                  panel,
