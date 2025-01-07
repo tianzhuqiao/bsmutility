@@ -231,6 +231,7 @@ class AutocompleteMixin():
         n = self.popup._suggestions.VirtualHitTest(event.Position.y)
         text = self.popup.GetSuggestion(n)
         self.apply_suggestion(text)
+        self.popup.Hide()
         wx.CallAfter(self.SetFocus)
         event.Skip()
 
@@ -247,7 +248,7 @@ class AutocompleteMixin():
             self.popup.Hide()
 
     def check_focus(self):
-        if not self.HasFocus():
+        if not self.popup.IsActive():
             self.hide_popup()
 
     def OnKillFocus(self, event):
@@ -269,7 +270,7 @@ class AutocompleteTextCtrl(wx.TextCtrl, AutocompleteMixin):
         AutocompleteMixin.__init__(self, height, frequency, value, completer)
 
     def Destroy(self):
-        self.UnsetCompleter()
+        self.unset_completer()
         return super().Destroy()
 
 class AutocompleteComboBox(wx.ComboBox, AutocompleteMixin):

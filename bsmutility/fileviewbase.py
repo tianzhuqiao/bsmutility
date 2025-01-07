@@ -323,7 +323,7 @@ class TreeCtrlBase(FastLoadTreeCtrl, FindTreeMixin):
         else:
             parent = self.GetRootItem()
 
-        if equation is None or force_select_signal:
+        if equation is None or force_select_signal or N_IN != len(items):
             # settings is none, get it from user
             start = ''
             if parent != self.GetRootItem():
@@ -349,7 +349,7 @@ class TreeCtrlBase(FastLoadTreeCtrl, FindTreeMixin):
 
         if outputs:
             for i in settings['inputs']:
-                outputs = outputs.replace(i, get_tree_item_path(settings[i])[-1])
+                outputs = outputs.replace(i, get_tree_item_path(settings[i], has_array=False)[-1])
 
         if item is not None:
             text = self.GetItemText(item)
