@@ -98,7 +98,7 @@ class SettingDlgBase(wx.Dialog):
     def OnPropKeyDown(self, event):
         data = event.GetData()
         keycode = data.get('keycode', '')
-        if keycode in [wx.WXK_UP, wx.WXK_DOWN, wx.WXK_SPACE, wx.WXK_ESCAPE, wx.WXK_TAB] and \
+        if keycode in [wx.WXK_UP, wx.WXK_DOWN, wx.WXK_SPACE, wx.WXK_ESCAPE] and \
            not wx.GetKeyState(wx.WXK_COMMAND):
             # only allow up/down/space/escape
             return

@@ -30,16 +30,16 @@ import wx
 import wx.html
 
 
-class SuggestionsPopup(wx.Frame):
+class SuggestionsPopup(wx.PopupTransientWindow):
     def __init__(self, parent):
-        wx.Frame.__init__(self,
-                          parent,
-                          style=wx.NO_BORDER | wx.FRAME_TOOL_WINDOW
-                          | wx.FRAME_NO_TASKBAR | wx.FRAME_FLOAT_ON_PARENT
-                          | wx.STAY_ON_TOP)
+        super().__init__(parent)
         self._suggestions = self._listbox(self)
         self._suggestions.SetItemCount(0)
         self._unformated_suggestions = None
+
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(self._suggestions, 1, wx.ALL|wx.EXPAND, 0)
+        self.SetSizer(sizer)
 
     class _listbox(wx.html.HtmlListBox):
         items = None
@@ -95,6 +95,8 @@ class SuggestionsPopup(wx.Frame):
     def GetSuggestion(self, n):
         return self._unformated_suggestions[n]
 
+    def HasSuggstion(self):
+        return self._unformated_suggestions is not None and len(self._unformated_suggestions) > 0
 
 class AutocompleteMixin():
 
@@ -108,14 +110,6 @@ class AutocompleteMixin():
         if completer:
             self.set_completer(completer)
 
-    def unset_completer(self):
-        if self.completer is not None:
-            frame = self.GetParent()
-            while frame and (not isinstance(frame, wx.Frame)) and\
-                  (not isinstance(frame, wx.Dialog)):
-                frame = frame.GetParent()
-            frame.Unbind(wx.EVT_MOVE)
-
     def set_completer(self, completer):
         """
         Initializes the autocompletion. The 'completer' has to be a function
@@ -125,29 +119,17 @@ class AutocompleteMixin():
         """
         self.completer = completer
 
-        frame = self.GetParent()
-        while frame and (not isinstance(frame, wx.Frame)) and\
-              (not isinstance(frame, wx.Dialog)):
-            frame = frame.GetParent()
+        self.popup = SuggestionsPopup(self.GetTopLevelParent())
 
-        self.popup = SuggestionsPopup(frame)
-
-        frame.Bind(wx.EVT_MOVE, self.OnMove)
         self.Bind(wx.EVT_TEXT, self.OnTextUpdate)
         self.Bind(wx.EVT_SIZE, self.OnSizeChange)
         self.Bind(wx.EVT_KEY_DOWN, self.OnKeyDown)
-        self.Bind(wx.EVT_KILL_FOCUS, self.OnKillFocus)
         self.popup._suggestions.Bind(wx.EVT_LEFT_DOWN,
                                      self.OnSuggestionClicked)
         self.popup._suggestions.Bind(wx.EVT_KEY_DOWN, self.OnSuggestionKeyDown)
 
     def adjust_popup_position(self):
         self.popup.SetPosition(self.ClientToScreen((0, self.GetSize().GetHeight())).Get())
-
-    def OnMove(self, event):
-        self.hide_popup()
-        self.adjust_popup_position()
-        event.Skip()
 
     def OnTextUpdate(self, event):
         # only show the popup when the text has changed; so type in 'Enter'
@@ -157,31 +139,21 @@ class AutocompleteMixin():
             if self.skip_event:
                 self.skip_event = False
             elif not self.queued_popup:
-                if self.IsShownOnScreen():
-                    wx.CallLater(self.frequency, self.auto_complete)
-                    self.queued_popup = True
+                if wx.Platform != '__WXGTK__':
+                    if self.IsShownOnScreen():
+                        wx.CallLater(self.frequency, self.auto_complete)
+                        self.queued_popup = True
         event.Skip()
 
     def auto_complete(self, *args, **kwargs):
         self.queued_popup = False
         if self.Value != "" and self.IsShownOnScreen():
-            formated, unformated, offset = self.completer(self.Value)
-            if formated:
-                self.auto_comp_offset = offset
-                self.popup.SetSuggestions(formated, unformated)
-                self.adjust_popup_position()
-                self.popup.ShowWithoutActivating()
-                self.SetFocus()
-                # in linux, SetFocus may select the whole string, de-select it
-                self.SelectNone()
-            else:
-                self.popup.Hide()
+            self.show_popup()
         else:
-            self.popup.Hide()
+            self.hide_popup()
 
     def OnSizeChange(self, event):
-        if self.popup.IsShownOnScreen():
-            self.popup.Hide()
+        self.hide_popup()
         self.popup.SetSize(self.GetSize()[0], self.height)
         event.Skip()
 
@@ -196,11 +168,16 @@ class AutocompleteMixin():
             self.popup.CursorDown()
             return
 
+        elif key == wx.WXK_TAB:
+            if not self.popup.IsShownOnScreen():
+                self.show_popup()
+                return
+
         elif key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER) and self.popup.Shown:
             self.skip_event = True
             txt = self.popup.GetSelectedSuggestion()
             self.apply_suggestion(txt)
-            self.popup.Hide()
+            self.hide_popup()
             event.Skip()
             return
 
@@ -214,7 +191,7 @@ class AutocompleteMixin():
             self.SelectAll()
 
         elif key == wx.WXK_ESCAPE:
-            self.popup.Hide()
+            self.hide_popup()
             return
 
         event.Skip()
@@ -228,10 +205,11 @@ class AutocompleteMixin():
 
     def OnSuggestionClicked(self, event):
         self.skip_event = True
+        #n = event.GetInt()
         n = self.popup._suggestions.VirtualHitTest(event.Position.y)
         text = self.popup.GetSuggestion(n)
         self.apply_suggestion(text)
-        self.popup.Hide()
+        self.hide_popup()
         wx.CallAfter(self.SetFocus)
         event.Skip()
 
@@ -240,20 +218,29 @@ class AutocompleteMixin():
         if key in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
             self.skip_event = True
             self.apply_suggestion(self.popup.GetSelectedSuggestion())
-            self.popup.Hide()
+            self.hide_popup()
+        elif key == wx.WXK_ESCAPE:
+            self.hide_popup()
         event.Skip()
+
+    def show_popup(self, show=True):
+        if not show:
+            if self.popup.IsShownOnScreen():
+                self.popup.Dismiss()
+        else:
+            formated, unformated, offset = self.completer(self.Value)
+            if formated:
+                self.auto_comp_offset = offset
+                self.popup.SetSuggestions(formated, unformated)
+                self.adjust_popup_position()
+
+                if not self.popup.IsShownOnScreen():
+                    self.popup.Popup()
+            else:
+                self.popup.Dismiss()
 
     def hide_popup(self):
-        if self.popup.IsShownOnScreen():
-            self.popup.Hide()
-
-    def check_focus(self):
-        if not self.popup.IsActive():
-            self.hide_popup()
-
-    def OnKillFocus(self, event):
-        wx.CallAfter(self.check_focus)
-        event.Skip()
+        self.show_popup(show=False)
 
 class AutocompleteTextCtrl(wx.TextCtrl, AutocompleteMixin):
     def __init__(self,
@@ -269,9 +256,6 @@ class AutocompleteTextCtrl(wx.TextCtrl, AutocompleteMixin):
         wx.TextCtrl.__init__(self, parent, value=value, style=style)
         AutocompleteMixin.__init__(self, height, frequency, value, completer)
 
-    def Destroy(self):
-        self.unset_completer()
-        return super().Destroy()
 
 class AutocompleteComboBox(wx.ComboBox, AutocompleteMixin):
     def __init__(self,
@@ -283,10 +267,6 @@ class AutocompleteComboBox(wx.ComboBox, AutocompleteMixin):
                  style=wx.TE_PROCESS_ENTER):
         wx.ComboBox.__init__(self, parent, value=value, style=style)
         AutocompleteMixin.__init__(self, height, frequency, value, completer)
-
-    def Destroy(self):
-        self.unset_completer()
-        return super().Destroy()
 
     def auto_complete(self, *args, **kwargs):
         super().auto_complete(*args, **kwargs)

@@ -639,7 +639,8 @@ class DirPanel(wx.Panel):
         resp = dp.send('frame.get_config', group='dirpanel', key='path_active')
         path = os.getcwd()
         if resp and resp[0][1] is not None:
-            path = resp[0][1]
+            if os.path.isdir(resp[0][1]):
+                path = resp[0][1]
 
         self.dirwin.LoadConfig()
         self.doGoToAddress(path)

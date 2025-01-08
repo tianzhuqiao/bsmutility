@@ -57,6 +57,12 @@ class AuiPathBar(wx.Control):
         art.SetDropDownBitmap(svg_to_bitmap(svg, win=self),
                               svg_to_bitmap(svg_grey, win=self))
 
+        self.tb.AddStretchSpacer(1)
+        if self._show_path_edit:
+            clr_active = wx.SystemSettings.GetColour(wx.SYS_COLOUR_BTNTEXT)
+            svg = self._update_svg(down_svg, clr_dst=clr_active)
+            self.tb.AddSimpleTool(self.ID_PATH_EDIT, "",
+                              svg_to_bitmap(svg, win=self), "")
         self.tb.Realize()
 
         self.address = AutocompleteComboBox(self, completer=self.completer)
