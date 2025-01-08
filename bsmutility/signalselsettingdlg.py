@@ -174,6 +174,10 @@ class SignalSelSettingDlg(SettingDlgBase):
                 p.Value(value)
             g.Insert(p)
 
+        # not close the dialog with escape key, so escape will only dismiss
+        # the popup from PropAutoCompleteEditBox
+        self.SetEscapeId(wx.ID_NONE)
+
     def completer(self, query):
         path = get_tree_item_path(query)
         d = self.data
@@ -182,6 +186,15 @@ class SignalSelSettingDlg(SettingDlgBase):
                 d = d[p]
         objs = [k for k in d if k.startswith(path[-1])]
         return objs, objs, len(path[-1])
+
+    def CreateButtons(self):
+        btn = super().CreateButtons()
+        # manually close the dialog when click Cancel button
+        self.Bind(wx.EVT_BUTTON, self.OnCancel, id=wx.ID_CANCEL)
+        return btn
+
+    def OnCancel(self, event):
+        self.EndModal(wx.ID_CANCEL)
 
 class PropSettingDlg(SettingDlgBase):
     def __init__(self, parent, props=None, config=None, title='Settings ...',
