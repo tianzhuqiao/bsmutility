@@ -2,7 +2,7 @@ PROJECT_NAME     = 'bsmutility'
 
 VER_MAJOR        = 0
 VER_MINOR        = 2
-VER_RELEASE      = 7
+VER_RELEASE      = 8
 
 VER_FLAGS        = ""
 
