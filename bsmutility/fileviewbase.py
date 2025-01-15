@@ -670,7 +670,7 @@ class TreeCtrlBase(FastLoadTreeCtrl, FindTreeMixin):
         in_path = False
         if pattern:
             path = self.GetItemPath(item)
-            in_path = any(pattern in p for p in path)
+            in_path = any(pattern in p.lower() for p in path)
 
         children = [[k, self._is_folder(v)]  for k, v in data.items() \
                      if not pattern or in_path or pattern in k.lower() \
