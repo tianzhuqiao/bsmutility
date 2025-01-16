@@ -364,7 +364,6 @@ class TreeCtrlBase(FastLoadTreeCtrl, FindTreeMixin):
         # add the converted data to parent DataFrame (same level as item)
         path = self.GetItemPath(parent)
         outputs = [n.strip() for n in outputs.split(',')]
-
         if len(outputs) == 1:
             d = [d]
 
@@ -373,8 +372,13 @@ class TreeCtrlBase(FastLoadTreeCtrl, FindTreeMixin):
             if n == '_':
                 # ignore place holder
                 continue
+            # convert "[0]" to "0", otherwise get_tree_item_path will be confused
+            # "[0]_deg" will be ['[0]', 'deg'], instead of ['[0]_deg']
+            n = n.replace('[', '').replace(']', '')
+            if not n:
+                continue
             # full name
-            name = get_tree_item_name(path + [outputs[i]])
+            name = get_tree_item_name(path + [n])
             self.SetData(name, d[i])
             new_item.append([name, i])
 
@@ -1104,9 +1108,9 @@ class TreeCtrlNoTimeStamp(TreeCtrlBase):
                      force_select_signal=False, **kwargs):
         new_item, settings = super().ConvertItems(item, items, equation, config,
                                                   force_select_signal, **kwargs)
-        if new_item and len(new_item) == 1 and new_item[0].IsOk():
+        if new_item and len(new_item) == 1:
             if settings is not None and settings.get(self.XAXIS, False):
-                path = self.GetItemPath(new_item[0])
+                path = get_tree_item_path(new_item[0][0])
                 self.SetXaxisPath(path)
         return new_item, settings
 
