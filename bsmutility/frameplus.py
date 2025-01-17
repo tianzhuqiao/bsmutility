@@ -182,7 +182,6 @@ class FramePlus(wx.Frame):
         self.InitStatusbar()
 
         # append sys path
-        sys.path.append('')
         for p in kwargs.get('path', []):
             sys.path.append(p)
 
@@ -242,6 +241,14 @@ class FramePlus(wx.Frame):
         self.Bind(aui.EVT_AUI_PANE_ACTIVATED, self.OnPaneActivated)
         self.Bind(aui.EVT_AUI_PANE_CLOSE, self.OnPaneClose)
         self.Bind(wx.EVT_CLOSE, self.OnClose)
+
+        # append the current folder, to make it easy to import the module in
+        # it; move it to the end of initialization so it will not impact
+        # initialization (e.g, add-on) (otherwise, for example, if current
+        # folder has the propgrid repo folder, it will try to load it from
+        # there, which is not correct, as the actual one in that folder shall
+        # be propgrid/propgrid)
+        sys.path.append('')
 
     def InitMenu(self):
         """initialize the menubar"""
