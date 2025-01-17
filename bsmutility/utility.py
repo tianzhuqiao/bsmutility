@@ -345,14 +345,18 @@ def create_shortcut(name, icns, ico, svg):
     try:
         import pyshortcuts
         if platform.system() == 'Darwin': # macOS
-            pyshortcuts.make_shortcut(script=name, name=name, icon=icns, noexe=True)
+            shortcut = pyshortcuts.make_shortcut(script=name, name=name, icon=icns, noexe=True)
+            targets  = [os.path.join(f, shortcut.target) for f in (shortcut.desktop_dir,)]
         elif platform.system() == 'Windows':
-            pyshortcuts.make_shortcut("_ -m bsmplot", name=name, icon=ico)
+            shortcut = pyshortcuts.make_shortcut("_ -m bsmplot", name=name, icon=ico)
+            targets  = [os.path.join(f, shortcut.target) for f in (shortcut.desktop_dir, shortcut.startmenu_dir)]
         else:
-            pyshortcuts.make_shortcut(script=name, name=name, icon=svg, noexe=True)
+            shortcut = pyshortcuts.make_shortcut(script=name, name=name, icon=svg, noexe=True)
+            targets  = [os.path.join(f, shortcut.target) for f in (shortcut.desktop_dir, shortcut.startmenu_dir)]
+        return targets
     except:
         traceback.print_exc(file=sys.stdout)
-
+    return None
 
 def get_file_icon(filename, size=16, win=None):
     """Helper function. Called for files and collects all the necessary
