@@ -425,3 +425,13 @@ def get_file_icon(filename, size=16, win=None):
             pass
 
     return None
+
+def get_latest_package_version(name, timeout=1):
+    try:
+        import requests
+        import json
+        resp = requests.get(f"https://pypi.org/pypi/{name}/json", timeout=timeout)
+        c = json.loads(resp.content)
+        return c['info']['version']
+    except:
+        return None
