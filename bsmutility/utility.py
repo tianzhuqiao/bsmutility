@@ -435,3 +435,15 @@ def get_latest_package_version(name, timeout=1):
         return c['info']['version']
     except:
         return None
+
+def update_package(package):
+    try:
+        import pip
+        if hasattr(pip, 'main'):
+            pip.main(['install', '--upgrade',  package])
+        else:
+            pip._internal.main(['install', '--upgrade', package])
+        return True
+    except:
+        return False
+    return False
