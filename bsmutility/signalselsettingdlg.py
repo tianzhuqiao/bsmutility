@@ -275,7 +275,7 @@ class ConvertManagingDlg(SettingDlgBase):
         inputs = setting['inputs']
         args = setting.get('args', None) or []
         equation = setting.get('equation', '#1')
-        outputs = setting.get('outputs', '~#')
+        outputs = setting.get('outputs', '~#1')
         g = self.propgrid
 
         p = g.Insert(PropText().Name('label').Label(self._T('label'))

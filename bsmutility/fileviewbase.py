@@ -44,6 +44,8 @@ class TreeCtrlBase(FastLoadTreeCtrl, FindTreeMixin):
     ID_COPY_NAME = wx.NewIdRef()
     IDS_CONVERT = {}
 
+    _last_convert = {}
+
     def __init__(self, parent, style=wx.TR_DEFAULT_STYLE):
         style = style | wx.TR_HAS_VARIABLE_ROW_HEIGHT | wx.TR_HIDE_ROOT |\
                 wx.TR_MULTIPLE | wx.TR_LINES_AT_ROOT
@@ -174,7 +176,14 @@ class TreeCtrlBase(FastLoadTreeCtrl, FindTreeMixin):
                 wx.TheClipboard.Close()
 
         elif cmd == self.ID_CONVERT:
-            self.ConvertItems(item, self.GetSelections())
+            if not isinstance(type(self)._last_convert, MutableMapping):
+                type(self)._last_convert = {}
+            _, settings = self.ConvertItems(item, self.GetSelections(),
+                                                      force_select_signal=True,
+                                                      **(type(self)._last_convert))
+            if settings is not None:
+                type(self)._last_convert = settings
+
         elif cmd == self.ID_CONVERT_CUSTOM:
             self.AddCustomizedConvert()
         elif cmd == self.ID_CONVERT_MANAGE:
@@ -307,7 +316,7 @@ class TreeCtrlBase(FastLoadTreeCtrl, FindTreeMixin):
                      force_select_signal=False, **kwargs):
         settings = kwargs
         settings['equation'] = equation
-        outputs = kwargs.get('outputs', '~#')
+        outputs = kwargs.get('outputs', '~#1')
         inputs = kwargs.get('inputs', None)
         args = kwargs.get('args', None)
         N_IN = len(inputs) if inputs is not None else len(items)
