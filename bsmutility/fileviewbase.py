@@ -38,6 +38,7 @@ class TreeCtrlBase(FastLoadTreeCtrl, FindTreeMixin):
     ID_PLOT = wx.NewIdRef()
     ID_CONVERT = wx.NewIdRef()
     ID_CONVERT_CUSTOM = wx.NewIdRef()
+    ID_CONVERT_CUSTOM_FROM_LAST = wx.NewIdRef()
     ID_CONVERT_MANAGE = wx.NewIdRef()
     ID_DELETE = wx.NewIdRef()
     ID_COPY_PATH = wx.NewIdRef()
@@ -184,8 +185,9 @@ class TreeCtrlBase(FastLoadTreeCtrl, FindTreeMixin):
             if settings is not None:
                 type(self)._last_convert = settings
 
-        elif cmd == self.ID_CONVERT_CUSTOM:
-            self.AddCustomizedConvert()
+        elif cmd in (self.ID_CONVERT_CUSTOM, self.ID_CONVERT_CUSTOM_FROM_LAST):
+            use_last_convert = cmd == self.ID_CONVERT_CUSTOM_FROM_LAST
+            self.AddCustomizedConvert(use_last_convert=use_last_convert)
         elif cmd == self.ID_CONVERT_MANAGE:
             self.ManageCustomizedConvert()
         elif cmd in self.IDS_CONVERT.values():
@@ -280,6 +282,8 @@ class TreeCtrlBase(FastLoadTreeCtrl, FindTreeMixin):
 
         menu_customize = wx.Menu()
         menu_customize.Append(self.ID_CONVERT_CUSTOM, "Add")
+        if type(self)._last_convert:
+            menu_customize.Append(self.ID_CONVERT_CUSTOM_FROM_LAST, "Add from last convert")
         converts = self.GetCustomizedConvert()
         if len(converts) > 0:
             menu_customize.Append(self.ID_CONVERT_MANAGE, "Manage")
@@ -493,9 +497,13 @@ class TreeCtrlBase(FastLoadTreeCtrl, FindTreeMixin):
                    'args':[], 'force_select_signal': False}
         return setting
 
-    def AddCustomizedConvert(self):
+    def AddCustomizedConvert(self, use_last_convert=False):
         settings = None
         convert = self.CreateEmptyConvert()
+        if use_last_convert and isinstance(type(self)._last_convert, MutableMapping):
+            # use the last one
+            convert.update((k, type(self)._last_convert[k]) for k in convert.keys() & type(self)._last_convert.keys())
+
         dlg = ConvertManagingDlg(self, [convert], labels=self._convert_labels, size=(800, 600))
         if dlg.ShowModal() == wx.ID_OK:
             settings = dlg.GetSettings()
@@ -1346,6 +1354,7 @@ class PanelNotebookBase(PanelBase):
     ID_CONFIRM_CLOSE = wx.NewIdRef()
     ID_SHOW_TAB_BOTTOM = wx.NewIdRef()
     ID_CONVERT_CUSTOM = wx.NewIdRef()
+    ID_CONVERT_CUSTOM_FROM_LAST = wx.NewIdRef()
     ID_CONVERT_MANAGE = wx.NewIdRef()
 
     def init(self):
@@ -1412,6 +1421,8 @@ class PanelNotebookBase(PanelBase):
 
             menu.AppendSeparator()
             menu.Append(self.ID_CONVERT_CUSTOM, "Add custom convert")
+            if isinstance(self.tree, TreeCtrlBase) and type(self.tree)._last_convert:
+                menu.Append(self.ID_CONVERT_CUSTOM_FROM_LAST, 'Add custom convert from last "Convert to ..."')
             converts = self.tree.GetCustomizedConvert()
             if len(converts) > 0:
                 menu.Append(self.ID_CONVERT_MANAGE, "Manage custom convert")
@@ -1459,9 +1470,10 @@ class PanelNotebookBase(PanelBase):
             for m in self.get_all_managers():
                 m.SetTabPosition(style)
             self.SetOption(show_tab_at_bottom=tab_at_bottom)
-        elif eid == self.ID_CONVERT_CUSTOM:
+        elif eid in (self.ID_CONVERT_CUSTOM, self.ID_CONVERT_CUSTOM_FROM_LAST):
             if isinstance(self.tree, TreeCtrlBase):
-                self.tree.AddCustomizedConvert()
+                use_last_convert = eid == self.ID_CONVERT_CUSTOM_FROM_LAST
+                self.tree.AddCustomizedConvert(use_last_convert=use_last_convert)
         elif eid == self.ID_CONVERT_MANAGE:
             if isinstance(self.tree, TreeCtrlBase):
                 self.tree.ManageCustomizedConvert()
