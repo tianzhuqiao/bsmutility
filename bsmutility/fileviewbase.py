@@ -564,7 +564,13 @@ class TreeCtrlBase(FastLoadTreeCtrl, FindTreeMixin):
         if x is None or y is None or not is_numeric_dtype(y):
             print(f"{label} is not numeric, ignore plotting!")
             return None
+        y = np.squeeze(y)
 
+        if y.ndim > 1:
+            #print(f'{label} is multidimensional, ignore plotting')
+            from .pysurface import surface
+            surface(y)
+            return None
         # plot
         label = label.lstrip('_')
         fig = plt.gcf()
@@ -1289,7 +1295,7 @@ class PanelBase(wx.Panel):
         """load the file"""
         self.filename = filename
         # add the filename to history
-        if add_to_history:
+        if add_to_history and filename is not None:
             dp.send('frame.add_file_history', filename=filename)
         title = self.GetCaption()
         icon = self.GetIcon()

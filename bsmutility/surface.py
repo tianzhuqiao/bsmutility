@@ -1,0 +1,329 @@
+import numpy as np
+import wx
+import wx.py.dispatcher as dp
+import aui2 as aui
+from glsurface.glsurface import TrackingSurface
+from .bsmxpm import pause_svg, pause_grey_svg, run_svg, run_grey_svg, more_svg, \
+                    forward_svg, forward_gray_svg, backward_svg, backward_gray_svg, \
+                    save_svg, save_gray_svg, copy_svg
+from .pymgr_helpers import Gcm
+from .utility import svg_to_bitmap, create_bitmap_from_window
+from .fileviewbase import PanelBase
+from .bsminterface import InterfaceRename
+
+
+class Surface(TrackingSurface):
+    def __init__(self, *args, **kwargs):
+        TrackingSurface.__init__(self, *args, **kwargs)
+
+    def Initialize(self):
+        super(Surface, self).Initialize()
+        self.SetShowStepSurface(False)
+        self.SetShowMode(mesh=True)
+        self.rotate_matrix = np.array([[0.9625753, -0.21669953, 0.16275978],
+                                       [0.26339024, 0.88946027, -0.3734787],
+                                       [-0.06383575, 0.40237066, 0.91324866]],
+                                      dtype=np.float32)
+
+
+class SurfacePanel(PanelBase):
+    Gcc = Gcm()
+    ID_RUN = wx.NewIdRef()
+    ID_PAUSE = wx.NewIdRef()
+    ID_MORE = wx.NewIdRef()
+    ID_SHOW_SLIDER = wx.NewIdRef()
+    ID_FORWARD = wx.NewIdRef()
+    ID_BACKWARD = wx.NewIdRef()
+
+    def __init__(self, parent, title, num):
+        PanelBase.__init__(self, parent, title)
+
+        sizer = wx.BoxSizer(wx.VERTICAL)
+
+        tb = aui.AuiToolBar(self,
+                            -1,
+                            wx.DefaultPosition,
+                            wx.DefaultSize,
+                            agwStyle=aui.AUI_TB_OVERFLOW
+                            | aui.AUI_TB_PLAIN_BACKGROUND)
+        tb.SetToolBitmapSize(wx.Size(16, 16))
+
+        tb.AddTool(wx.ID_SAVE, "Save", bitmap=svg_to_bitmap(save_svg),
+                disabled_bitmap=svg_to_bitmap(save_gray_svg),
+                kind=aui.ITEM_NORMAL)
+        tb.AddSimpleTool(wx.ID_COPY, "Copy", bitmap=svg_to_bitmap(copy_svg))
+
+        tb.AddStretchSpacer()
+        tb.AddTool(self.ID_MORE, "More", svg_to_bitmap(more_svg, win=self),
+                        wx.NullBitmap, wx.ITEM_NORMAL, "More")
+        tb.Realize()
+        sizer.Add(tb, 0, wx.EXPAND, 0)
+
+        self.canvas = Surface(self, None)
+        sizer.Add(self.canvas, 1, wx.EXPAND | wx.ALL, 5)
+        self.tbSlider = aui.AuiToolBar(self,
+                                       -1,
+                                       wx.DefaultPosition,
+                                       wx.DefaultSize,
+                                       agwStyle=aui.AUI_TB_OVERFLOW
+                                       | aui.AUI_TB_PLAIN_BACKGROUND)
+        self.tbSlider.AddTool(self.ID_RUN, "Run", bitmap=svg_to_bitmap(run_svg),
+                              disabled_bitmap=svg_to_bitmap(run_grey_svg),
+                              kind=aui.ITEM_NORMAL)
+        self.tbSlider.AddTool(self.ID_PAUSE, "Pause", bitmap=svg_to_bitmap(pause_svg),
+                              disabled_bitmap=svg_to_bitmap(pause_grey_svg),
+                              kind=aui.ITEM_NORMAL)
+        self.tbSlider.AddTool(self.ID_BACKWARD, "Back", bitmap=svg_to_bitmap(backward_svg),
+                              disabled_bitmap=svg_to_bitmap(backward_gray_svg),
+                              kind=aui.ITEM_NORMAL)
+
+        self.tbSlider.AddTool(self.ID_FORWARD, "Forward", bitmap=svg_to_bitmap(forward_svg),
+                              disabled_bitmap=svg_to_bitmap(forward_gray_svg),
+                              kind=aui.ITEM_NORMAL)
+        self.slider = wx.Slider(self.tbSlider, 0, style=wx.SL_HORIZONTAL | wx.SL_TOP)
+        item = self.tbSlider.AddControl(self.slider)
+        item.SetProportion(1)
+        self.slider.SetRange(-self.canvas.GetBufLen()+1, 0)
+        self.tbSlider.Realize()
+        self.tbSlider.Hide()
+        sizer.Add(self.tbSlider, 0, wx.EXPAND | wx.ALL, 0)
+        self.SetSizer(sizer)
+
+        self.Bind(wx.EVT_UPDATE_UI, self.OnUpdateTool)
+        self.Bind(wx.EVT_TOOL, self.OnProcessTool)
+
+        self.timer = wx.Timer(self)
+        self.Bind(wx.EVT_TIMER, self.OnTimer, self.timer)
+        self.slider.Bind(wx.EVT_SCROLL, self.OnSelectFrame)
+        #self.timer.Start(100)
+        self.is_running = False
+
+        self.num = num
+        if self.num is None:
+            self.num = self.Gcc.get_next_num()
+        self.title = title
+        self.Gcc.set_active(self)
+
+    def UpdateSlider(self, value):
+        self.slider.SetValue(value)
+        self.canvas.SetCurrentFrame(value)
+
+    def OnSelectFrame(self, event):
+        self.canvas.SetCurrentFrame(self.slider.GetValue())
+
+    def GetCaption(self):
+        return self.title or f"glsurface-{self.num}"
+
+    def OnUpdateTool(self, event):
+        eid = event.GetId()
+        if eid == self.ID_RUN:
+            event.Enable(not self.is_running and self.canvas.frames is not None)
+            self.slider.Enable(self.canvas.frames is not None)
+        elif eid == self.ID_PAUSE:
+            event.Enable(self.is_running)
+        elif eid == self.ID_BACKWARD:
+            event.Enable(self.canvas.frames is not None and self.slider.GetValue() > self.slider.GetMin())
+        elif eid == self.ID_FORWARD:
+            event.Enable(self.canvas.frames is not None and self.slider.GetValue() < self.slider.GetMax())
+        else:
+            event.Skip()
+
+    def OnProcessTool(self, event):
+        eid = event.GetId()
+        if eid == self.ID_RUN:
+            self.is_running = True
+            self.timer.Start(50)
+        elif eid == self.ID_PAUSE:
+            self.is_running = False
+            self.timer.Stop()
+        elif eid == self.ID_MORE:
+            menu = wx.Menu()
+            mitem = menu.AppendCheckItem(self.ID_SHOW_SLIDER, "Show slider bar")
+            mitem.Check(self.tbSlider.IsShown())
+            self.PopupMenu(menu)
+        elif eid == self.ID_SHOW_SLIDER:
+            self.tbSlider.Show(not self.tbSlider.IsShown())
+            self.Layout()
+        elif eid == self.ID_BACKWARD:
+            self.UpdateSlider(self.slider.GetValue()-1)
+        elif eid == self.ID_FORWARD:
+            self.UpdateSlider(self.slider.GetValue()+1)
+        elif eid == wx.ID_COPY:
+            bitmap = create_bitmap_from_window(self.canvas)
+            bmp_obj = wx.BitmapDataObject()
+            bmp_obj.SetBitmap(bitmap)
+            if not wx.TheClipboard.IsOpened():
+                open_success = wx.TheClipboard.Open()
+                if open_success:
+                    wx.TheClipboard.SetData(bmp_obj)
+                    wx.TheClipboard.Flush()
+                    wx.TheClipboard.Close()
+        elif eid == wx.ID_SAVE:
+            self.doSave()
+        else:
+            event.Skip()
+
+    def doSave(self):
+        wildcard = [
+                [wx.BITMAP_TYPE_BMP, 'Windows bitmap (*.bmp)|*.bmp'],
+                [wx.BITMAP_TYPE_XBM, 'X BitMap (*.xbm)|*.xbm'],
+                [wx.BITMAP_TYPE_XPM, 'X pixmap (*.xpm)|*.xpm'],
+                [wx.BITMAP_TYPE_TIFF, 'Tagged Image Format File (*.tif;*.tiff)|*.tif;*.tiff'],
+                [wx.BITMAP_TYPE_GIF, 'Graphics Interchange Format (*.gif)|*.gif'],
+                [wx.BITMAP_TYPE_PNG, 'Portable Network Graphics (*.png)|*.png'],
+                [wx.BITMAP_TYPE_JPEG, 'JPEG (*.jpeg;*.jpg)|*.jpeg;*.jpg'],
+                [wx.BITMAP_TYPE_PNM, 'Portable Anymap (*.pnm)|*.pnm'],
+                [wx.BITMAP_TYPE_PCX, 'PCX (*.pcx)|*.pc'],
+                [wx.BITMAP_TYPE_PICT, 'Macintosh PICT (*.pict)|*.pict'],
+                ]
+        dlg = wx.FileDialog(self, "Save XYZ file", wildcard='|'.join([w[1] for w in wildcard]),
+                       style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT)
+        dlg.SetFilterIndex(5)
+        if dlg.ShowModal() == wx.ID_CANCEL:
+            return     # the user changed their mind
+
+        # save the current contents in the file
+        pathname = dlg.GetPath()
+        filterIndex = dlg.GetFilterIndex()
+        fileTypes = [w[0] for w in wildcard]
+        if filterIndex < 0 or filterIndex >= len(fileTypes):
+            print("Unsupported file format!")
+            return
+        bitmap = create_bitmap_from_window(self.canvas)
+        bitmap.SaveFile(pathname, fileTypes[filterIndex])
+
+    def OnTimer(self, event):
+        if self.slider.GetValue() >= self.slider.GetMax():
+            self.is_running = False
+            self.timer.Stop()
+            return
+        self.UpdateSlider(self.slider.GetValue()+1)
+
+
+class GLSurface(InterfaceRename):
+    kwargs = {}
+    ID_NEW_FIGURE = wx.NOT_FOUND
+    ID_PANE_CLOSE = wx.NewIdRef()
+    ID_PANE_CLOSE_OTHERS = wx.NewIdRef()
+    ID_PANE_CLOSE_ALL = wx.NewIdRef()
+    MENU_NEW_FIG = 'File:New:glsurface\tCtrl+G'
+
+    icon = None
+
+    @classmethod
+    def initialize(cls, frame, **kwargs):
+        super().initialize(frame, **kwargs)
+        cls.kwargs = kwargs
+
+        resp = dp.send('frame.add_menu',
+                       path=cls.MENU_NEW_FIG,
+                       rxsignal='bsm.glsurface')
+        if resp:
+            cls.ID_NEW_FIGURE = resp[0][1]
+
+        if cls.ID_NEW_FIGURE is not wx.NOT_FOUND:
+            dp.connect(cls.ProcessCommand, 'bsm.glsurface')
+        dp.connect(cls.SetActive, 'frame.activate_panel')
+        dp.connect(cls.OnBufferChanged, 'sim.buffer_changed')
+        dp.connect(cls.PaneMenu, 'bsm.glsurface.pane_menu')
+
+        #cls.icon = svg_to_bitmap(polyline_svg, win=frame)
+
+    @classmethod
+    def initialized(cls):
+        # add glsurface interface to the shell
+        dp.send(signal='shell.run',
+                command='from bsmutility.pysurface import *',
+                prompt=False,
+                verbose=False,
+                history=False)
+
+    @classmethod
+    def PaneMenu(cls, pane, command):
+        if not pane or not isinstance(pane.window, SurfacePanel):
+            return
+        if command == cls.ID_PANE_CLOSE:
+            dp.send(signal='frame.delete_panel', panel=pane.window)
+        elif command == cls.ID_PANE_CLOSE_OTHERS:
+            mgrs = SurfacePanel.Gcc.get_all_managers()
+            for mgr in mgrs:
+                if mgr == pane.window:
+                    continue
+                dp.send(signal='frame.delete_panel', panel=mgr)
+        elif command == cls.ID_PANE_CLOSE_ALL:
+            mgrs = SurfacePanel.Gcc.get_all_managers()
+            for mgr in mgrs:
+                dp.send(signal='frame.delete_panel', panel=mgr)
+        elif command == cls.ID_PANE_RENAME:
+            cls.RenamePane(pane)
+
+    @classmethod
+    def OnBufferChanged(cls, bufs):
+        """the buffer has be changes, update the plot_trace"""
+        for p in SurfacePanel.Gcc.get_all_managers():
+            p.update_buffer(bufs)
+
+    @classmethod
+    def SetActive(cls, pane):
+        if pane and isinstance(pane, SurfacePanel):
+            if SurfacePanel.Gcc.get_active() == pane:
+                return
+            SurfacePanel.Gcc.set_active(pane)
+
+    @classmethod
+    def uninitializing(cls):
+        super().uninitializing()
+        # before save perspective
+        for mgr in SurfacePanel.Gcc.get_all_managers():
+            dp.send('frame.delete_panel', panel=mgr)
+        dp.send('frame.delete_menu', path=cls.MENU_NEW_FIG, id=cls.ID_NEW_FIGURE)
+
+    @classmethod
+    def uninitialized(cls):
+        dp.disconnect(cls.SetActive, 'frame.activate_panel')
+        dp.disconnect(cls.OnBufferChanged, 'sim.buffer_changed')
+        dp.disconnect(cls.PaneMenu, 'bsm.glsurface.pane_menu')
+        super().uninitialized()
+
+    @classmethod
+    def ProcessCommand(cls, command):
+        """process the menu command"""
+        if command == cls.ID_NEW_FIGURE:
+            cls.AddFigure()
+
+    @classmethod
+    def AddFigure(cls, title=None, num=None):
+        fig = SurfacePanel(cls.frame, title, num)
+        direction = cls.kwargs.get('direction', 'top')
+        # set the minsize to be large enough to avoid some following assert; it
+        # will not eliminate all as if a page is added to a notebook, the
+        # minsize of notebook is not the max of all its children pages (check
+        # frameplus.py).
+        # wxpython/ext/wxWidgets/src/gtk/bitmap.cpp(539): assert ""width > 0 &&
+        # height > 0"" failed in Create(): invalid bitmap size
+        dp.send('frame.add_panel',
+                panel=fig,
+                direction=direction,
+                title=fig.GetCaption(),
+                target=SurfacePanel.Gcc.get_active(),
+                minsize=(75, 75),
+                pane_menu={'rxsignal': 'bsm.glsurface.pane_menu',
+                           'menu': [
+                               {'id':cls.ID_PANE_RENAME, 'label':'Rename'},
+                               {'type': wx.ITEM_SEPARATOR},
+                               {'id':cls.ID_PANE_CLOSE, 'label':'Close\tCtrl+W'},
+                               {'id':cls.ID_PANE_CLOSE_OTHERS, 'label':'Close Others'},
+                               {'id':cls.ID_PANE_CLOSE_ALL, 'label':'Close All'},
+                               ]},
+                icon=cls.icon)
+        return fig
+
+
+def surface(points):
+    pane = SurfacePanel.Gcc.get_active()
+    if pane is None:
+        pane = GLSurface.AddFigure()
+    if pane is None:
+        print('Fail to create glsurface window')
+        return
+    pane.canvas.NewFrameArrive(points, False)
