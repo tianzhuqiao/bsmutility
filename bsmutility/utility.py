@@ -449,23 +449,23 @@ def update_package(package):
     return False
 
 def create_bitmap_from_window(window):
-        """
-        Actually creates bitmap from the window.
+    """
+    Actually creates bitmap from the window.
 
-        :param `window`: the window to create the bitmap;
-        """
+    :param `window`: the window to create the bitmap;
+    """
 
-        scale_factor = window.GetDPIScaleFactor()
-        if wx.Platform == '__WXMSW__':
-            scale_factor = 1
-        sz = window.GetSize()
-        bitmap = wx.Bitmap(int(sz[0]*scale_factor), int(sz[1]*scale_factor))
-        bitmap.SetScaleFactor(scale_factor)
-        memory = wx.MemoryDC(bitmap)
+    scale_factor = window.GetDPIScaleFactor()
+    if wx.Platform == '__WXMSW__':
+        scale_factor = 1
+    sz = window.GetSize()
+    bitmap = wx.Bitmap(int(sz[0]*scale_factor), int(sz[1]*scale_factor))
+    bitmap.SetScaleFactor(scale_factor)
+    memory = wx.MemoryDC(bitmap)
 
-        memory.SetBackgroundMode(wx.TRANSPARENT)
-        memory.Clear()
-        dc = wx.ClientDC(window)
-        memory.Blit(0, 0, sz[0], sz[1], dc, 0, 0)
-        memory.SelectObject(wx.NullBitmap)
-        return bitmap
+    memory.SetBackgroundMode(wx.TRANSPARENT)
+    memory.Clear()
+    dc = wx.ClientDC(window)
+    memory.Blit(0, 0, sz[0], sz[1], dc, 0, 0)
+    memory.SelectObject(wx.NullBitmap)
+    return bitmap

@@ -5,9 +5,9 @@ import aui2 as aui
 from glsurface.glsurface import TrackingSurface
 from .bsmxpm import pause_svg, pause_grey_svg, run_svg, run_grey_svg, more_svg, \
                     forward_svg, forward_gray_svg, backward_svg, backward_gray_svg, \
-                    save_svg, save_gray_svg, copy_svg
+                    save_svg, save_gray_svg, copy_svg, copy_gray_svg
 from .pymgr_helpers import Gcm
-from .utility import svg_to_bitmap, create_bitmap_from_window
+from .utility import svg_to_bitmap
 from .fileviewbase import PanelBase
 from .bsminterface import InterfaceRename
 
@@ -48,10 +48,14 @@ class SurfacePanel(PanelBase):
                             | aui.AUI_TB_PLAIN_BACKGROUND)
         tb.SetToolBitmapSize(wx.Size(16, 16))
 
-        tb.AddTool(wx.ID_SAVE, "Save", bitmap=svg_to_bitmap(save_svg),
-                disabled_bitmap=svg_to_bitmap(save_gray_svg),
-                kind=aui.ITEM_NORMAL)
-        tb.AddSimpleTool(wx.ID_COPY, "Copy", bitmap=svg_to_bitmap(copy_svg))
+        tb.AddTool(wx.ID_SAVE, "Save", bitmap=svg_to_bitmap(save_svg, win=self),
+                   disabled_bitmap=svg_to_bitmap(save_gray_svg, win=self),
+                   kind=aui.ITEM_NORMAL,
+                   short_help_string="Save to file")
+        tb.AddTool(wx.ID_COPY, "Copy", bitmap=svg_to_bitmap(copy_svg, win=self),
+                   disabled_bitmap=svg_to_bitmap(copy_gray_svg, win=self),
+                   kind=aui.ITEM_NORMAL,
+                   short_help_string="Copy to clipboard")
 
         tb.AddStretchSpacer()
         tb.AddTool(self.ID_MORE, "More", svg_to_bitmap(more_svg, win=self),
@@ -60,26 +64,30 @@ class SurfacePanel(PanelBase):
         sizer.Add(tb, 0, wx.EXPAND, 0)
 
         self.canvas = Surface(self, None)
-        sizer.Add(self.canvas, 1, wx.EXPAND | wx.ALL, 5)
+        sizer.Add(self.canvas, 1, wx.EXPAND | wx.ALL, 0)
         self.tbSlider = aui.AuiToolBar(self,
                                        -1,
                                        wx.DefaultPosition,
                                        wx.DefaultSize,
                                        agwStyle=aui.AUI_TB_OVERFLOW
                                        | aui.AUI_TB_PLAIN_BACKGROUND)
-        self.tbSlider.AddTool(self.ID_RUN, "Run", bitmap=svg_to_bitmap(run_svg),
-                              disabled_bitmap=svg_to_bitmap(run_grey_svg),
-                              kind=aui.ITEM_NORMAL)
-        self.tbSlider.AddTool(self.ID_PAUSE, "Pause", bitmap=svg_to_bitmap(pause_svg),
-                              disabled_bitmap=svg_to_bitmap(pause_grey_svg),
-                              kind=aui.ITEM_NORMAL)
-        self.tbSlider.AddTool(self.ID_BACKWARD, "Back", bitmap=svg_to_bitmap(backward_svg),
-                              disabled_bitmap=svg_to_bitmap(backward_gray_svg),
-                              kind=aui.ITEM_NORMAL)
+        self.tbSlider.AddTool(self.ID_RUN, "Play", bitmap=svg_to_bitmap(run_svg, win=self),
+                              disabled_bitmap=svg_to_bitmap(run_grey_svg, win=self),
+                              kind=aui.ITEM_NORMAL,
+                              short_help_string="Play")
+        self.tbSlider.AddTool(self.ID_PAUSE, "Pause", bitmap=svg_to_bitmap(pause_svg, win=self),
+                              disabled_bitmap=svg_to_bitmap(pause_grey_svg, win=self),
+                              kind=aui.ITEM_NORMAL,
+                              short_help_string="Pause")
+        self.tbSlider.AddTool(self.ID_BACKWARD, "Back", bitmap=svg_to_bitmap(backward_svg, win=self),
+                              disabled_bitmap=svg_to_bitmap(backward_gray_svg, win=self),
+                              kind=aui.ITEM_NORMAL,
+                              short_help_string="Go to previous frame")
 
-        self.tbSlider.AddTool(self.ID_FORWARD, "Forward", bitmap=svg_to_bitmap(forward_svg),
-                              disabled_bitmap=svg_to_bitmap(forward_gray_svg),
-                              kind=aui.ITEM_NORMAL)
+        self.tbSlider.AddTool(self.ID_FORWARD, "Forward", bitmap=svg_to_bitmap(forward_svg, win=self),
+                              disabled_bitmap=svg_to_bitmap(forward_gray_svg, win=self),
+                              kind=aui.ITEM_NORMAL,
+                              short_help_string="Go to next frame")
         self.slider = wx.Slider(self.tbSlider, 0, style=wx.SL_HORIZONTAL | wx.SL_TOP)
         item = self.tbSlider.AddControl(self.slider)
         item.SetProportion(1)
@@ -98,11 +106,14 @@ class SurfacePanel(PanelBase):
         #self.timer.Start(100)
         self.is_running = False
 
-        self.num = num
-        if self.num is None:
-            self.num = self.Gcc.get_next_num()
         self.title = title
-        self.Gcc.set_active(self)
+
+        accel_tbl = [
+            (wx.ACCEL_CTRL, ord('S'), wx.ID_SAVE),
+            (wx.ACCEL_CTRL, ord('C'), wx.ID_COPY),
+        ]
+
+        self.SetAcceleratorTable(wx.AcceleratorTable(accel_tbl))
 
     def UpdateSlider(self, value):
         self.slider.SetValue(value)
@@ -128,6 +139,10 @@ class SurfacePanel(PanelBase):
         else:
             event.Skip()
 
+    def ShowSlider(self, show=True):
+        self.tbSlider.Show(show)
+        self.Layout()
+
     def OnProcessTool(self, event):
         eid = event.GetId()
         if eid == self.ID_RUN:
@@ -142,14 +157,16 @@ class SurfacePanel(PanelBase):
             mitem.Check(self.tbSlider.IsShown())
             self.PopupMenu(menu)
         elif eid == self.ID_SHOW_SLIDER:
-            self.tbSlider.Show(not self.tbSlider.IsShown())
-            self.Layout()
+            self.ShowSlider(not self.tbSlider.IsShown())
         elif eid == self.ID_BACKWARD:
             self.UpdateSlider(self.slider.GetValue()-1)
         elif eid == self.ID_FORWARD:
             self.UpdateSlider(self.slider.GetValue()+1)
         elif eid == wx.ID_COPY:
-            bitmap = create_bitmap_from_window(self.canvas)
+            bitmap = self.canvas.GetBitmap()
+            if bitmap is None:
+                print('No bitmap available')
+                return
             bmp_obj = wx.BitmapDataObject()
             bmp_obj.SetBitmap(bitmap)
             if not wx.TheClipboard.IsOpened():
@@ -189,8 +206,11 @@ class SurfacePanel(PanelBase):
         if filterIndex < 0 or filterIndex >= len(fileTypes):
             print("Unsupported file format!")
             return
-        bitmap = create_bitmap_from_window(self.canvas)
-        bitmap.SaveFile(pathname, fileTypes[filterIndex])
+        bitmap = self.canvas.GetBitmap()
+        if bitmap:
+            bitmap.SaveFile(pathname, fileTypes[filterIndex])
+        else:
+            print("No bitmap available!")
 
     def OnTimer(self, event):
         if self.slider.GetValue() >= self.slider.GetMax():
