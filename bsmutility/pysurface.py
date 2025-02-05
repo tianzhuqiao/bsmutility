@@ -20,6 +20,7 @@ def surface(points, clear=True):
     if pane is not None:
         if clear:
             pane.canvas.SetFrames(points, reset_buf_len=True, silent=False)
+            pane.UpdateSlider(0)
         else:
             pane.canvas.NewFrameArrive(points, silent=False)
 

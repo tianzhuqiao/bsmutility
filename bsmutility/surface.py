@@ -25,6 +25,18 @@ class Surface(TrackingSurface):
                                        [-0.06383575, 0.40237066, 0.91324866]],
                                       dtype=np.float32)
 
+    def GetContextMenu(self):
+        menu = super().GetContextMenu()
+        menu.AppendSeparator()
+        menu.Append(wx.ID_CLEAR, 'Clear')
+        return menu
+
+    def OnProcessMenuEvent(self, event):
+        eid = event.GetId()
+        if eid == wx.ID_CLEAR:
+            self.Clear()
+        else:
+            super().OnProcessMenuEvent(event)
 
 class SurfacePanel(PanelBase):
     Gcc = Gcm()
