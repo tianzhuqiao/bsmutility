@@ -6,7 +6,7 @@ import aui2 as aui
 from glsurface.glsurface import TrackingSurface
 from .bsmxpm import pause_svg, pause_grey_svg, run_svg, run_grey_svg, more_svg, \
                     forward_svg, forward_gray_svg, backward_svg, backward_gray_svg, \
-                    save_svg, save_gray_svg, copy_svg, copy_gray_svg
+                    save_svg, save_gray_svg, copy_svg, copy_gray_svg, new_page_svg
 from .pymgr_helpers import Gcm
 from .utility import svg_to_bitmap
 from .fileviewbase import PanelBase
@@ -73,7 +73,10 @@ class SurfacePanel(PanelBase):
                             agwStyle=aui.AUI_TB_OVERFLOW
                             | aui.AUI_TB_PLAIN_BACKGROUND)
         tb.SetToolBitmapSize(wx.Size(16, 16))
-
+        if platform.system() != 'Linux':
+            tb.AddSimpleTool(wx.ID_NEW, 'New window', bitmap=svg_to_bitmap(new_page_svg, win=self),
+                             short_help_string='Create a new glsurface window')
+            tb.AddSeparator()
         tb.AddTool(wx.ID_SAVE, "Save", bitmap=svg_to_bitmap(save_svg, win=self),
                    disabled_bitmap=svg_to_bitmap(save_gray_svg, win=self),
                    kind=aui.ITEM_NORMAL,
@@ -203,6 +206,8 @@ class SurfacePanel(PanelBase):
                     wx.TheClipboard.Close()
         elif eid == wx.ID_SAVE:
             self.doSave()
+        elif eid == wx.ID_NEW:
+            GLSurface.AddFigure()
         else:
             event.Skip()
 
