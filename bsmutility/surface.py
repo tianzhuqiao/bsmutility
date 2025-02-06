@@ -1,3 +1,4 @@
+import platform
 import numpy as np
 import wx
 import wx.py.dispatcher as dp
@@ -29,12 +30,25 @@ class Surface(TrackingSurface):
         menu = super().GetContextMenu()
         menu.AppendSeparator()
         menu.Append(wx.ID_CLEAR, 'Clear')
+        if platform.system() == 'Linux':
+            menu.Append(wx.ID_RESET, 'Reset')
         return menu
 
     def OnProcessMenuEvent(self, event):
         eid = event.GetId()
         if eid == wx.ID_CLEAR:
             self.Clear()
+        elif eid == wx.ID_RESET:
+            try:
+                parent = self.GetTopLevelParent()
+                msg = 'Would you like to re-create  drawing surface?'
+                dlg = wx.MessageDialog(self, msg, parent.GetLabel(), wx.YES_NO)
+                dlg.SetExtendedMessage("Only call this if the drawing surface is messed up; otherwise, it may crash!")
+                if dlg.ShowModal() == wx.ID_YES:
+                    self.CreateSurface()
+                    self.Update()
+            except:
+                pass
         else:
             super().OnProcessMenuEvent(event)
 
