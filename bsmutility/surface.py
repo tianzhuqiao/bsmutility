@@ -152,15 +152,16 @@ class SurfacePanel(PanelBase):
 
     def OnUpdateTool(self, event):
         eid = event.GetId()
+        multi_frame = self.canvas.frames is not None and self.canvas.GetBufLen() > 1
         if eid == self.ID_RUN:
-            event.Enable(not self.is_running and self.canvas.frames is not None)
-            self.slider.Enable(self.canvas.frames is not None)
+            event.Enable(not self.is_running and multi_frame)
+            self.slider.Enable(multi_frame)
         elif eid == self.ID_PAUSE:
             event.Enable(self.is_running)
         elif eid == self.ID_BACKWARD:
-            event.Enable(self.canvas.frames is not None and self.slider.GetValue() > self.slider.GetMin())
+            event.Enable(multi_frame and self.slider.GetValue() > self.slider.GetMin())
         elif eid == self.ID_FORWARD:
-            event.Enable(self.canvas.frames is not None and self.slider.GetValue() < self.slider.GetMax())
+            event.Enable(multi_frame and self.slider.GetValue() < self.slider.GetMax())
         else:
             event.Skip()
 
@@ -245,6 +246,19 @@ class SurfacePanel(PanelBase):
             self.timer.Stop()
             return
         self.UpdateSlider(self.slider.GetValue()+1)
+
+
+    def plot(self, points, clear=True):
+        if clear:
+            self.canvas.SetFrames(points, reset_buf_len=True, silent=False)
+            # update the slider
+            self.slider.SetRange(-self.canvas.GetBufLen()+1, 0)
+            self.UpdateSlider(0)
+            if self.canvas.frames is not None and self.canvas.GetBufLen() > 1:
+                # show slider if needed
+                self.ShowSlider(True)
+        else:
+            self.canvas.NewFrameArrive(points, silent=False)
 
 
 class GLSurface(InterfaceRename):

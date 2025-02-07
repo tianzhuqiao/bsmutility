@@ -18,11 +18,4 @@ def gcs():
 def surface(points, clear=True):
     pane = gcs()
     if pane is not None:
-        if clear:
-            pane.canvas.SetFrames(points, reset_buf_len=True, silent=False)
-            pane.UpdateSlider(0)
-        else:
-            pane.canvas.NewFrameArrive(points, silent=False)
-
-        if pane.canvas.frames is not None and pane.canvas.frames.shape[0] > 1:
-            pane.ShowSlider(True)
+        pane.plot(points, clear=clear)
