@@ -21,10 +21,6 @@ class Surface(TrackingSurface):
         super(Surface, self).Initialize()
         self.SetShowStepSurface(False)
         self.SetShowMode(mesh=True)
-        self.rotate_matrix = np.array([[0.9625753, -0.21669953, 0.16275978],
-                                       [0.26339024, 0.88946027, -0.3734787],
-                                       [-0.06383575, 0.40237066, 0.91324866]],
-                                      dtype=np.float32)
 
     def GetContextMenu(self):
         menu = super().GetContextMenu()
