@@ -1,5 +1,4 @@
 import platform
-import numpy as np
 import wx
 import wx.py.dispatcher as dp
 import aui2 as aui
@@ -47,6 +46,36 @@ class Surface(TrackingSurface):
                 pass
         else:
             super().OnProcessMenuEvent(event)
+
+class DataDropTarget(wx.DropTarget):
+    def __init__(self, canvas):
+        wx.DropTarget.__init__(self)
+        self.obj = wx.TextDataObject()
+        self.SetDataObject(self.obj)
+        self.canvas = canvas
+        self.SetDefaultAction(wx.DragMove)
+
+    def OnEnter(self, x, y, d):
+        #self.canvas.OnEnter(x, y, d)
+        return d
+
+    def OnLeave(self):
+        #self.frame.OnLeave()
+        pass
+
+    def OnDrop(self, x, y):
+        return True
+
+    def OnData(self, x, y, d):
+        if not self.GetData():
+            return wx.DragNone
+        dp.send('graph.drop', axes=self.canvas, allowed=True)
+        return d
+
+    def OnDragOver(self, x, y, d):
+        #self.frame.OnDragOver(x, y, d)
+        return d
+
 
 class SurfacePanel(PanelBase):
     Gcc = Gcm()
@@ -139,6 +168,9 @@ class SurfacePanel(PanelBase):
         ]
 
         self.SetAcceleratorTable(wx.AcceleratorTable(accel_tbl))
+
+        dt = DataDropTarget(self)
+        self.canvas.SetDropTarget(dt)
 
     def UpdateSlider(self, value):
         self.slider.SetValue(value)
