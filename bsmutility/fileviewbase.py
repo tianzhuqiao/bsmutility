@@ -569,7 +569,7 @@ class TreeCtrlBase(FastLoadTreeCtrl, FindTreeMixin):
         if y.ndim > 1:
             #print(f'{label} is multidimensional, ignore plotting')
             from .pysurface import surface
-            surface(y)
+            surface(points=y)
             return None
         # plot
         label = label.lstrip('_')

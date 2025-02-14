@@ -1,9 +1,9 @@
 from .surface import SurfacePanel, GLSurface
 
 def gcs():
-    '''
+    """
     Get the current glsurface window, and create one if there is no one available
-    '''
+    """
     if GLSurface.frame is None:
         print('surface is not initialized')
         return None
@@ -15,7 +15,19 @@ def gcs():
         return None
     return pane
 
-def surface(points, clear=True):
-    pane = gcs()
-    if pane is not None:
+def surface(points=None, clear=True, num=None):
+    """
+    Create a new glsurface window, or activate an existing one.
+
+    If points is not none, plot it in the glsurface window. If clear is True,
+    reset the frame buffer of the glsurface window, otherwise add the points as
+    the new frame.
+    """
+    if num is not None:
+        pane = SurfacePanel.Gcc.get_manager(num)
+    else:
+        pane = gcs()
+    if pane is not None and points is not None:
         pane.plot(points, clear=clear)
+
+    return pane
