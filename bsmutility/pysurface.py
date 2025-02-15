@@ -1,3 +1,4 @@
+import numpy as np
 from .surface import SurfacePanel, GLSurface
 
 def gcs():
@@ -27,7 +28,12 @@ def surface(points=None, clear=True, num=None):
         pane = SurfacePanel.Gcc.get_manager(num)
     else:
         pane = gcs()
+    if pane is None:
+        GLSurface.AddFigure(num=num)
     if pane is not None and points is not None:
-        pane.plot(points, clear=clear)
+        if np.ndim(points) in (2, 3):
+            pane.plot(points, clear=clear)
+        else:
+            print("Error: unsupported data format")
 
     return pane

@@ -87,7 +87,7 @@ class SurfacePanel(PanelBase):
     ID_BACKWARD = wx.NewIdRef()
 
     def __init__(self, parent, title, num):
-        PanelBase.__init__(self, parent, title)
+        PanelBase.__init__(self, parent, title, num=num)
 
         sizer = wx.BoxSizer(wx.VERTICAL)
 
@@ -386,6 +386,10 @@ class GLSurface(InterfaceRename):
 
     @classmethod
     def AddFigure(cls, title=None, num=None):
+
+        if SurfacePanel.Gcc.has_num(num):
+            return SurfacePanel.Gcc.get_manager(num=num)
+
         fig = SurfacePanel(cls.frame, title, num)
         direction = cls.kwargs.get('direction', 'top')
         # set the minsize to be large enough to avoid some following assert; it

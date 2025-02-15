@@ -1247,7 +1247,7 @@ class PanelBase(wx.Panel):
     Gcc = None
     ID_OPEN = wx.NewIdRef()
     ID_REFRESH = wx.NewIdRef()
-    def __init__(self, parent, filename=None, autohide=True, **kwargs):
+    def __init__(self, parent, filename=None, autohide=True, num=None, **kwargs):
         wx.Panel.__init__(self, parent, **kwargs)
         if autohide:
             # Hide the window for now, it will be shown when add to AUI manager
@@ -1259,7 +1259,10 @@ class PanelBase(wx.Panel):
         if filename is not None:
             self.Load(filename)
 
-        self.num = self.Gcc.get_next_num()
+        if num is not None and not self.Gcc.has_num(num):
+            self.num = num
+        else:
+            self.num = self.Gcc.get_next_num()
         self.Gcc.set_active(self)
 
     def init(self):
