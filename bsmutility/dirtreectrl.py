@@ -1037,9 +1037,27 @@ class DirListCtrl(ListCtrlBase, DirWithColumnsMixin):
         if resp and resp[0][1] is not None:
             self.SetColumnsOrder(resp[0][1])
 
+        sort_column = None
+        resp = dp.send('frame.get_config', group='dirlistctrl', key='sort_column')
+        if resp and resp[0][1] is not None:
+            sort_column = resp[0][1]
+
+        sort_order = None
+        resp = dp.send('frame.get_config', group='dirlistctrl', key='sort_order')
+        if resp and resp[0][1] is not None:
+            sort_order = resp[0][1]
+
+        if sort_column is not None and sort_order is not None:
+            if 0 <= sort_column < self.GetColumnCount():
+                self.ShowSortIndicator(sort_column, sort_order)
+
     def SaveConfig(self):
         DirWithColumnsMixin.LoadConfig(self)
         dp.send('frame.set_config', group='dirlistctrl', columns_order=self.GetColumnsOrder())
+
+        col = self.GetSortIndicator()
+        ascending = self.IsAscendingSortIndicator()
+        dp.send('frame.set_config', group='dirlistctrl', sort_column=col, sort_order=ascending)
 
     def HighlightPath(self, filename):
         for item in range(self.GetItemCount()):
@@ -1103,6 +1121,15 @@ class DirTreeList(HTL.HyperTreeList, DirWithColumnsMixin, DirTreeMixin, FindTree
         accel2 = FindTreeMixin.BuildAccelTable(self)
         return accel + accel2
 
+    def ShowSortIndicator(self, col, ascending):
+        col_prev, _ = self.sort_col
+        if col_prev is not None and col_prev != col:
+            self.GetHeaderWindow().SetSortIcon(col, wx.HDR_SORT_ICON_NONE)
+
+        flag = wx.HDR_SORT_ICON_UP if ascending else wx.HDR_SORT_ICON_DOWN
+        self.sort_col = (col, ascending)
+        self.GetHeaderWindow().SetSortIcon(col, flag)
+
     def OnColClick(self, event):
         col= event.GetColumn()
         if col == -1:
@@ -1111,12 +1138,10 @@ class DirTreeList(HTL.HyperTreeList, DirWithColumnsMixin, DirTreeMixin, FindTree
         if col_prev == col:
             ascending = not ascending
         elif col_prev is not None and col_prev != col:
-            self.GetHeaderWindow().SetSortIcon(col, wx.HDR_SORT_ICON_NONE)
             ascending = True
 
-        flag = wx.HDR_SORT_ICON_UP if ascending else wx.HDR_SORT_ICON_DOWN
-        self.sort_col = (col, ascending)
-        self.GetHeaderWindow().SetSortIcon(col, flag)
+        self.ShowSortIndicator(col, ascending)
+
         self.SetRootDir(self.rootdir, self.pattern, self.show_hidden)
 
     def BuildColumns(self):
@@ -1204,3 +1229,26 @@ class DirTreeList(HTL.HyperTreeList, DirWithColumnsMixin, DirTreeMixin, FindTree
             self.LoadDir(item, d.directory)
 
         return super().GetPrevItem(item)
+
+    def LoadConfig(self):
+        super().LoadConfig()
+
+        sort_column = None
+        resp = dp.send('frame.get_config', group='dirlistctrl', key='sort_column')
+        if resp and resp[0][1] is not None:
+            sort_column = resp[0][1]
+
+        sort_order = None
+        resp = dp.send('frame.get_config', group='dirlistctrl', key='sort_order')
+        if resp and resp[0][1] is not None:
+            sort_order = resp[0][1]
+
+        if sort_column is not None and sort_order is not None:
+            if 0 <= sort_column < self.GetColumnCount():
+                self.ShowSortIndicator(sort_column, sort_order)
+
+    def SaveConfig(self):
+        super().SaveConfig()
+
+        dp.send('frame.set_config', group='dirlistctrl', sort_column=self.sort_col[0],
+                sort_order=self.sort_col[1])
