@@ -569,8 +569,7 @@ class TreeCtrlBase(FastLoadTreeCtrl, FindTreeMixin):
         if y.ndim > 1:
             #print(f'{label} is multidimensional, ignore plotting')
             from .pysurface import surface
-            surface(points=y)
-            return None
+            return surface(points=y)
         # plot
         label = label.lstrip('_')
         fig = plt.gcf()
@@ -1075,9 +1074,7 @@ class TreeCtrlWithTimeStamp(TreeCtrlBase):
 
     def FlattenTree(self, data):
         data = flatten_tree(data)
-        data_size = [len(data[k]) for k in data]
-        data_1d = [len(data[k].shape) <= 1 or sorted(data[k].shape)[-2] == 1 for k in data]
-        if all(data_1d) and all(d == data_size[0] for d in data_size):
+        if self._is_all_data_same_size([data[k] for k in data]):
             df = pd.DataFrame()
             for name, val in data.items():
                 if name == self.timestamp_key:
@@ -1180,6 +1177,12 @@ class TreeCtrlNoTimeStamp(TreeCtrlBase):
             menu.Insert(1+item_added, self.ID_EXPORT_WITH_X, "Export to shell with x-axis data")
         return menu
 
+    def _is_all_data_same_size(self, data):
+        # check if all data are same size and 1d.
+        data_size = [np.size(d) for d in data]
+        data_1d = [len(d.shape) <= 1 or sorted(d.shape)[-2] == 1  for d in data]
+        return all(data_1d) and all(d == data_size[0] for d in data_size)
+
     def GetItemExportData(self, item):
         y = self.GetItemData(item)
         path = self.GetItemPath(item)
@@ -1198,9 +1201,8 @@ class TreeCtrlNoTimeStamp(TreeCtrlBase):
                 y = self.GetItemData(sel)
                 name = self.GetItemText(sel)
                 data.append([name, y])
-            data_size = [len(d[1]) for d in data]
-            data_1d = [len(d[1].shape) <= 1 or sorted(d[1].shape)[-2] == 1  for d in data]
-            if all(data_1d) and all(d == data_size[0] for d in data_size):
+
+            if self._is_all_data_same_size([d[1] for d in data]):
                 # if all data has same size, convert it to DataFrame
                 df = pd.DataFrame()
                 for name, val in data:
@@ -1574,7 +1576,7 @@ class FileViewBase(Interface):
             dlg = wx.FileDialog(cls.frame, "Choose a file", "", "", wildcard, style)
             if dlg.ShowModal() == wx.ID_OK:
                 filename = dlg.GetPath()
-                cls.open(filename=filename, activate=True)
+                cls.open(filename=filename, activate=True, force_open=True)
             dlg.Destroy()
 
     @classmethod
@@ -1592,13 +1594,14 @@ class FileViewBase(Interface):
             activate=True,
             add_to_history=True,
             lineno=None,
+            force_open=False,
             **kwargs):
         """
         open an file
 
         If the file has already been opened, return its handler; otherwise, create it.
         """
-        if not cls.check_filename(filename):
+        if not force_open and not cls.check_filename(filename):
             return None
 
         manager = cls.get_manager(num, filename, active=False)
