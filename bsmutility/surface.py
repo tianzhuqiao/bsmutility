@@ -16,8 +16,6 @@ class Surface(TrackingSurface):
     def __init__(self, *args, **kwargs):
         TrackingSurface.__init__(self, *args, **kwargs)
 
-    def Initialize(self):
-        super(Surface, self).Initialize()
         self.SetShowStepSurface(False)
         self.SetShowMode(mesh=True)
 
