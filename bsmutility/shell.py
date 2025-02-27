@@ -29,18 +29,22 @@ PseudoFile.close = PseudoFile_close
 
 def _help(command):
     try:
-        if isinstance(command, str):
-            print(pydoc.plain(pydoc.render_doc(command, "Help on %s")))
-        else:
-            print(command.__doc__)
+        print(pydoc.plain(pydoc.render_doc(command, "Help on %s")))
+        return
     except:
-        print(f'No help found on "{command}"')
+        pass
 
+    if not isinstance(command, str) and hasattr(command, '__doc__'):
+        print(command.__doc__)
+        return
+
+    print(f'No help found on "{command}"')
 def _doc(command):
     if isinstance(command, str):
-        dp.send('help.show', command=command)
-    else:
-        _help(command)
+        resp = dp.send('help.show', command=command)
+        if resp:
+            return
+    _help(command)
 
 class Shell(pyshell.Shell, FindEditorMixin, EditorThemeMixin):
     ID_COPY_PLUS = wx.NewIdRef()
