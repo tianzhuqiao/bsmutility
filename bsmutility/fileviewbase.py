@@ -114,14 +114,14 @@ class TreeCtrlBase(FastLoadTreeCtrl, FindTreeMixin):
             return
         dp.send('frame.set_config', group=group, **kwargs)
 
-    def LoadConfig(self, key):
+    def LoadConfig(self, key, default=None):
         group = self.GetConfigGroup()
         if not group:
             return
         resp = dp.send('frame.get_config', group=group, key=key)
         if resp and resp[0][1] is not None:
             return resp[0][1]
-        return None
+        return default
 
     def GetItemExportData(self, item):
         output = self.GetItemData(item)

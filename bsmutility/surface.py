@@ -157,6 +157,7 @@ class SurfacePanel(PanelBase):
         self.slider.Bind(wx.EVT_SCROLL, self.OnSelectFrame)
         #self.timer.Start(100)
         self.is_running = False
+        self.last_frame_id = -1
 
         self.title = title
 
@@ -169,6 +170,31 @@ class SurfacePanel(PanelBase):
 
         dt = DataDropTarget(self)
         self.canvas.SetDropTarget(dt)
+
+        dp.connect(self.DataUpdated, 'graph.data_updated')
+
+    def Destroy(self):
+        dp.disconnect(self.DataUpdated, 'graph.data_updated')
+        super().Destroy()
+
+    def DataUpdated(self):
+        if not hasattr(self, 'trace_signal'):
+            return
+
+        resp = dp.send(**self.trace_signal, last_frame_id=self.last_frame_id)
+        if not resp:
+            return
+
+        # ignore the zmq when different "num"
+        resp = [r for r in resp if len(r[1]) == 3 and r[1][0] is not None and r[1][1] is not None]
+        if not resp:
+            return
+
+        x, y, self.last_frame_id = resp[0][1]
+        if x is None or y is None:
+            return
+
+        self.plot(y, clear=False)
 
     def UpdateSlider(self, value):
         self.slider.SetValue(value)
@@ -183,6 +209,13 @@ class SurfacePanel(PanelBase):
     def OnUpdateTool(self, event):
         eid = event.GetId()
         multi_frame = self.canvas.frames is not None and self.canvas.GetBufLen() > 1
+        if multi_frame:
+            # update the slider range
+            rng = self.slider.GetRange()
+            if rng[1] - rng[0] + 1 != self.canvas.GetBufLen():
+                self.slider.SetRange(-self.canvas.GetBufLen()+1, 0)
+                self.UpdateSlider(0)
+
         if eid == self.ID_RUN:
             event.Enable(not self.is_running and multi_frame)
             self.slider.Enable(multi_frame)
@@ -288,7 +321,12 @@ class SurfacePanel(PanelBase):
                 # show slider if needed
                 self.ShowSlider(True)
         else:
-            self.canvas.NewFrameArrive(points, silent=False)
+            if len(points.shape) == 3:
+                shape = list(points.shape)
+                for f in range(shape[0]):
+                    self.canvas.NewFrameArrive(points[f, :, :], silent=False)
+            else:
+                self.canvas.NewFrameArrive(points, silent=False)
 
 
 class GLSurface(InterfaceRename):
