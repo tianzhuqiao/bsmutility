@@ -101,9 +101,19 @@ class TreeCtrlBase(FastLoadTreeCtrl, FindTreeMixin):
         self.x_path = None
         self._convert_labels[self.XAXIS] = 'Set as x-axis'
 
-        accel = FindTreeMixin.BuildAccelTable(self)
+        accel = self.BuildAccelTable()
         self.accel = wx.AcceleratorTable(accel)
         self.SetAcceleratorTable(self.accel)
+
+        self.Bind(wx.EVT_TOOL, self.OnProcessCommand, id=self.ID_COPY_NAME)
+        self.Bind(wx.EVT_TOOL, self.OnProcessCommand, id=self.ID_COPY_PATH)
+
+    def BuildAccelTable(self):
+        accel = FindTreeMixin.BuildAccelTable(self)
+        accel += [(wx.ACCEL_CTRL, ord('C'), self.ID_COPY_NAME),
+                  (wx.ACCEL_CTRL | wx.ACCEL_SHIFT, ord('C'), self.ID_COPY_PATH)
+                  ]
+        return accel
 
     def GetConfigGroup(self):
         return  self.__class__.__name__
@@ -129,7 +139,13 @@ class TreeCtrlBase(FastLoadTreeCtrl, FindTreeMixin):
         output_name = get_variable_name(name)
         return output_name, output
 
-    def OnProcessCommand(self, cmd, item):
+    def OnProcessCommand(self, event):
+        cmd = event.GetId()
+        item = self.GetSelections()
+        if item:
+            self.doProcessCommand(cmd, item[0])
+
+    def doProcessCommand(self, cmd, item):
         # process the command from OnTreeItemMenu
         if cmd in [self.ID_EXPORT]:
             output_name, output = self.GetItemExportData(item)
@@ -266,8 +282,8 @@ class TreeCtrlBase(FastLoadTreeCtrl, FindTreeMixin):
 
         menu.Append(self.ID_DELETE, "Delete")
         menu.AppendSeparator()
-        menu.Append(self.ID_COPY_NAME, "Copy name")
-        menu.Append(self.ID_COPY_PATH, "Copy path")
+        menu.Append(self.ID_COPY_NAME, "Copy name\tCtrl+C")
+        menu.Append(self.ID_COPY_PATH, "Copy path\tCtrl+Shift+C")
 
         if not is_numeric_dtype(value):
             return menu
@@ -306,7 +322,7 @@ class TreeCtrlBase(FastLoadTreeCtrl, FindTreeMixin):
         cmd = self.GetPopupMenuSelectionFromUser(menu)
         if cmd == wx.ID_NONE:
             return
-        self.OnProcessCommand(cmd, item)
+        self.doProcessCommand(cmd, item)
 
     def GetConvertItemProp(self, item, inputs, outputs):
         # the configuration props used to convert an item
@@ -999,7 +1015,7 @@ class TreeCtrlWithTimeStamp(TreeCtrlBase):
                 output_name = get_variable_name(path[:-1])
         return output_name, output
 
-    def OnProcessCommand(self, cmd, item):
+    def doProcessCommand(self, cmd, item):
         if cmd in [self.ID_EXPORT_WITH_TIMESTAMP, self.ID_EXPORT_WITH_X]:
             output_name, output = self.GetItemExportData(item)
             if isinstance(output, pd.DataFrame):
@@ -1020,7 +1036,7 @@ class TreeCtrlWithTimeStamp(TreeCtrlBase):
                 # clear the current x-axis
                 self.SetXaxisPath(None)
         else:
-            super().OnProcessCommand(cmd, item)
+            super().doProcessCommand(cmd, item)
 
     def GetItemTimeStampFromPath(self, path):
         if isinstance(path, str):
@@ -1219,7 +1235,7 @@ class TreeCtrlNoTimeStamp(TreeCtrlBase):
             output_name = "_data"
         return output_name, data
 
-    def OnProcessCommand(self, cmd, item):
+    def doProcessCommand(self, cmd, item):
         path = self.GetItemPath(item)
         if not path:
             return
@@ -1241,7 +1257,7 @@ class TreeCtrlNoTimeStamp(TreeCtrlBase):
                 # clear the current x-axis
                 self.SetXaxisPath(None)
         else:
-            super().OnProcessCommand(cmd, item)
+            super().doProcessCommand(cmd, item)
 
 
 class PanelBase(wx.Panel):
