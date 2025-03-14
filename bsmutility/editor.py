@@ -203,7 +203,8 @@ class PyEditor(EditorBase):
             item.SetBitmap(svg_to_bitmap(indent_dec_svg, win=self))
         menu.AppendSeparator()
         if self.IsPythonScript():
-            menu.Append(self.ID_RUN_LINE, 'Run selection/line')
+            cmd = self.GetSelectedText()
+            menu.Append(self.ID_RUN_LINE, 'Run selection' if cmd else 'Run current line')
             menu.AppendSeparator()
         menu.AppendCheckItem(self.ID_WORD_WRAP, 'Word wrap')
         menu.Check(self.ID_WORD_WRAP, self.GetWrapMode() != wx.stc.STC_WRAP_NONE)
@@ -966,6 +967,7 @@ class PyEditorPanel(PanelBase):
                 if self.splitter.IsSplit():
                     self.splitter.Unsplit(self.editor2)
                 self.splitter.SplitVertically(self.editor, self.editor2)
+                self.editor2.filename = self.editor.filename
 
     def OnSplitHorz(self, event):
         """show splitter window horizontally"""
@@ -987,6 +989,7 @@ class PyEditorPanel(PanelBase):
                 if self.splitter.IsSplit():
                     self.splitter.Unsplit(self.editor2)
                 self.splitter.SplitHorizontally(self.editor, self.editor2)
+                self.editor2.filename = self.editor.filename
 
     def OnMore(self, event):
         menu = wx.Menu()
