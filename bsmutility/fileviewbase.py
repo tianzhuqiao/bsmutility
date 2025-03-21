@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import aui2 as aui
 from propgrid import PropText, PropCheckBox
 from mplpanel.graph_subplot import refresh_legend
-from .bsmxpm import open_svg, refresh_svg, more_svg
+from .bsmxpm import open_svg, refresh_svg,refresh_grey_svg, more_svg
 from .utility import FastLoadTreeCtrl, _dict, send_data_to_shell, get_variable_name
 from .utility import svg_to_bitmap, build_tree, flatten_tree
 from .utility import get_file_finder_name, show_file_in_finder, \
@@ -1312,8 +1312,12 @@ class PanelBase(wx.Panel):
 
         return icon
 
-    def Load(self, filename, add_to_history=True):
+    def Load(self, filename, add_to_history=True, data=None):
         """load the file"""
+        self.doLoad(filename, add_to_history, data)
+
+    def doLoad(self, filename, add_to_history=True, data=None):
+        """actually load the file"""
         self.filename = filename
         # add the filename to history
         if add_to_history and filename is not None:
@@ -1349,6 +1353,25 @@ class PanelBase(wx.Panel):
     @classmethod
     def get_manager(cls, num):
         return cls.Gcc.get_manager(num)
+
+    @classmethod
+    def open(cls, filename):
+        # open the file and read its content
+        try:
+            return cls.do_open(filename)
+        except Exception as e:
+            msg = f'Failed to open the file:\n{filename}'
+            parent = wx.GetTopLevelWindows()[0]
+            dlg = wx.RichMessageDialog(parent, msg, parent.GetLabel())
+            #dlg.ShowCheckBox('Do not ask me again', False)
+            dlg.ShowModal()
+            dlg.Destroy()
+            raise e
+
+    @classmethod
+    def do_open(cls, filename):
+        # actually open the file and read its content
+        return None
 
     def OnProcessCommand(self, event):
         """process the menu command"""
@@ -1413,8 +1436,9 @@ class PanelNotebookBase(PanelBase):
                         "Open file")
         self.tb.AddSeparator()
         refresh_bmp = svg_to_bitmap(refresh_svg, win=self)
+        refresh_grey_bmp = svg_to_bitmap(refresh_grey_svg, win=self)
         self.tb.AddTool(self.ID_REFRESH, "Refresh", refresh_bmp,
-                        wx.NullBitmap, wx.ITEM_NORMAL,
+                        refresh_grey_bmp, wx.ITEM_NORMAL,
                         "Refresh file")
 
         self.tb.AddStretchSpacer()
@@ -1622,9 +1646,15 @@ class FileViewBase(Interface):
 
         manager = cls.get_manager(num, filename, active=False)
         if manager is None:
+            try:
+                data = cls.panel_type.open(filename)
+            except:
+                # failed to open the file
+                print(f"Failed to open file: {filename}")
+                return None
             manager = cls.panel_type(cls.frame)
             if filename:
-                manager.Load(filename, add_to_history=add_to_history)
+                manager.Load(filename, add_to_history=add_to_history, data=data)
             title = manager.GetCaption()
             copy_path_posix = []
             if platform.system() == 'Windows':
@@ -1649,8 +1679,8 @@ class FileViewBase(Interface):
                                {'id': cls.ID_PANE_SHOW_IN_FINDER, 'label':f'Reveal in  {get_file_finder_name()}'},
                                {'id': cls.ID_PANE_SHOW_IN_BROWSING, 'label':'Reveal in Browsing panel'},
                                ]},
-                           tooltip=str(filename) if filename else "",
-                           name=str(filename) if filename else "",
+                           tooltip=str(manager.filename) if manager.filename else "",
+                           name=str(manager.filename) if manager.filename else "",
                            icon=manager.GetIcon())
         # activate the manager
         if manager:

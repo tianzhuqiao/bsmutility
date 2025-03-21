@@ -732,7 +732,7 @@ class PyEditorPanel(PanelBase):
         self.was_modified = self.editor.GetModify()
         self.UpdateCaption()
 
-    def Load(self, filename, add_to_history=True):
+    def Load(self, filename, add_to_history=True, data=None):
         """open file"""
         self.editor.LoadFile(filename)
         self.was_modified = False
