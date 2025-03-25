@@ -148,6 +148,7 @@ class TaskBarIcon(wx.adv.TaskBarIcon):
 class FramePlus(wx.Frame):
     CONFIG_NAME='bsm'
     ID_SHOW_TAB_BOTTOM = wx.NewIdRef()
+    ID_SHOW_WINDOWLIST = wx.NewIdRef()
 
     def __init__(self,
                  parent,
@@ -217,6 +218,9 @@ class FramePlus(wx.Frame):
 
         tab_at_bottom = self.GetConfig('mainframe', 'show_tab_at_bottom', default=True)
         self.SetTabPosition(aui.AUI_NB_BOTTOM if tab_at_bottom else aui.AUI_NB_TOP)
+        tab_windowlist = self.GetConfig('mainframe', 'show_tab_windowlist', default=False)
+        if tab_windowlist:
+            self._mgr.SetAutoNotebookStyle(self._mgr.GetAutoNotebookStyle() | aui.AUI_NB_WINDOWLIST_BUTTON)
 
         # load addon
         self.addon = {}
@@ -272,6 +276,8 @@ class FramePlus(wx.Frame):
         self.AddMenu('&Tools', kind="Popup", autocreate=True)
         self.AddMenu('&Tools:Show tabs at the bottom', id=self.ID_SHOW_TAB_BOTTOM,
                      autocreate=True, kind="Check")
+        self.AddMenu('&Tools:Show window list button', id=self.ID_SHOW_WINDOWLIST,
+                     autocreate=True, kind="Check")
         self.AddMenu('&Tools:Sep', kind="Separator")
 
         # Connect Events
@@ -279,6 +285,8 @@ class FramePlus(wx.Frame):
         self.Bind(wx.EVT_MENU, self.OnFileQuit, id=wx.ID_CLOSE)
         self.Bind(wx.EVT_MENU, self.OnOptions, id=self.ID_SHOW_TAB_BOTTOM)
         self.Bind(wx.EVT_UPDATE_UI, self.OnMenuCmdUI, id=self.ID_SHOW_TAB_BOTTOM)
+        self.Bind(wx.EVT_MENU, self.OnOptions, id=self.ID_SHOW_WINDOWLIST)
+        self.Bind(wx.EVT_UPDATE_UI, self.OnMenuCmdUI, id=self.ID_SHOW_WINDOWLIST)
 
     def InitStatusbar(self):
         self.statusbar = wx.StatusBar(self)
@@ -319,6 +327,8 @@ class FramePlus(wx.Frame):
         if eid == self.ID_SHOW_TAB_BOTTOM:
             style = self._mgr.GetAutoNotebookStyle()
             self.SetTabPosition(aui.AUI_NB_TOP if style & aui.AUI_NB_BOTTOM else aui.AUI_NB_BOTTOM)
+        elif eid == self.ID_SHOW_WINDOWLIST:
+            self._mgr.SetAutoNotebookStyle(self._mgr.GetAutoNotebookStyle() ^ aui.AUI_NB_WINDOWLIST_BUTTON)
 
     def GetDefaultAddonPackages(self):
         return []
@@ -563,6 +573,8 @@ class FramePlus(wx.Frame):
         self.SetConfig('mainframe', perspective=self._mgr.SavePerspective())
         tab_at_bottom = (self._mgr.GetAutoNotebookStyle() & aui.AUI_NB_BOTTOM) != 0
         self.SetConfig('mainframe', show_tab_at_bottom=tab_at_bottom)
+        tab_windowlist = (self._mgr.GetAutoNotebookStyle() & aui.AUI_NB_WINDOWLIST_BUTTON) != 0
+        self.SetConfig('mainframe', show_tab_windowlist=tab_windowlist)
 
         # close all addon
         dp.send('frame.exit')
@@ -730,6 +742,8 @@ class FramePlus(wx.Frame):
 
         if idx == self.ID_SHOW_TAB_BOTTOM:
             event.Check(self._mgr.GetAutoNotebookStyle() & aui.AUI_NB_BOTTOM)
+        elif idx == self.ID_SHOW_WINDOWLIST:
+            event.Check(self._mgr.GetAutoNotebookStyle() & aui.AUI_NB_WINDOWLIST_BUTTON)
 
         signal = self.menuAddon.get(idx, None)
         if signal:
