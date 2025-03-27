@@ -989,8 +989,13 @@ class DirListCtrl(ListCtrlBase, DirWithColumnsMixin):
 
     def SortBy(self, column, ascending):
         column = self.columns_shown[column]
-        self.data.sort(key=lambda x: x[column], reverse=not ascending)
-        self.data.sort(key=lambda x: x[-1])
+        column_name = self.columns[column]['name']
+        if column_name == "Name":
+            self.data.sort(key=lambda x: str(x[column]).lower(), reverse=not ascending)
+        else:
+            self.data.sort(key=lambda x: x[column], reverse=not ascending)
+
+        self.data.sort(key=lambda x: str(x[-1]).lower())
 
     def GetItemPath(self, item):
         if isinstance(item, wx.ListItem):
@@ -1169,7 +1174,12 @@ class DirTreeList(HTL.HyperTreeList, DirWithColumnsMixin, DirTreeMixin, FindTree
             self.SetItemText(item, self.GetItemColumnText(d, col), col)
 
     def SortBy(self, data, column, ascending):
-        data.sort(key=lambda x: x[column], reverse=not ascending)
+        column_name = self.columns[column]['name']
+        if column_name == 'Name':
+            data.sort(key=lambda x: str(x[column]).lower(), reverse=not ascending)
+        else:
+            data.sort(key=lambda x: x[column], reverse=not ascending)
+
         data.sort(key=lambda x: x[-1])
 
     def LoadPath(self, directory):
