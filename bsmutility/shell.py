@@ -174,10 +174,6 @@ class Shell(pyshell.Shell, FindEditorMixin, EditorThemeMixin):
         except:
             traceback.print_exc(file=sys.stdout)
 
-    def clear(self):
-        super().clear()
-        self.prompt()
-
     def OnCtrlC(self, event):
         if self.CanCopy():
             self.Copy()

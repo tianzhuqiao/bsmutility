@@ -43,9 +43,9 @@ def magicSingle(command):
             # when using the close', fill in both parentheses and quotes
             command = command[:5] + '("' + arg  + '")'
 
-    elif command[:5] == 'clear':
-        command = command[:5] + '()'
-    elif command[:5] == 'alias':
+    elif command.rstrip() == 'clear':
+        command = 'clear()'
+    elif command[:6] == 'alias ':
         c = command[5:].lstrip().split(' ')
         if len(c) < 2:
             # delete the alias if exists
