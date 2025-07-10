@@ -135,7 +135,7 @@ class Shell(pyshell.Shell, FindEditorMixin, EditorThemeMixin):
             self.CmdKeyAssign(ord('A'), wx.stc.STC_SCMOD_META, wx.stc.STC_CMD_VCHOME)
 
         self.Bind(wx.EVT_UPDATE_UI, lambda evt: evt.Enable(True), id=self.ID_CLEAR)
-        self.Bind(wx.EVT_MENU, lambda evt: self.clear(), id=self.ID_CLEAR)
+        self.Bind(wx.EVT_MENU, self.OnClear, id=self.ID_CLEAR)
 
         # find dialog
         FindEditorMixin.__init__(self)
@@ -173,6 +173,18 @@ class Shell(pyshell.Shell, FindEditorMixin, EditorThemeMixin):
             dp.send(*args, **kwargs)
         except:
             traceback.print_exc(file=sys.stdout)
+
+    def  OnClear(self, event):
+        self.clear()
+        self.prompt()
+
+    def _clip(self, data):
+        if wx.TheClipboard.Open():
+            wx.TheClipboard.UsePrimarySelection(False)
+            wx.TheClipboard.SetData(data)
+            # it doesn't work in windows
+            #wx.TheClipboard.Flush()
+            wx.TheClipboard.Close()
 
     def OnCtrlC(self, event):
         if self.CanCopy():
