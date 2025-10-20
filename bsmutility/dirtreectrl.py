@@ -591,15 +591,26 @@ def pretty_size(byte, units=None):
     return str(amount) + suffix
 
 class DirWithColumnsMixin(DirMixin):
+    ID_COL_ALIGN_LEFT = wx.NewIdRef()
+    ID_COL_ALIGN_CENTER = wx.NewIdRef()
+    ID_COL_ALIGN_RIGHT = wx.NewIdRef()
     ID_AUTO_COL_SIZE = wx.NewIdRef()
     ID_AUTO_COL_SIZE_ALL = wx.NewIdRef()
 
     columns = [
-                {'name': 'Name', 'visible': True, 'id': wx.NewIdRef(), 'optional': False, 'min_width': 200, 'align': 'left'},
-                {'name': 'Data modified', 'visible': True, 'id': wx.NewIdRef(), 'optional': True, 'min_width': 100, 'align': 'left'},
-                {'name': 'Data created', 'visible': False, 'id': wx.NewIdRef(), 'optional': True, 'min_width': 100, 'align': 'left'},
-                {'name': 'Type', 'visible': False, 'id': wx.NewIdRef(), 'optional': True, 'min_width': 60, 'align': 'left'},
-                {'name': 'Size', 'visible': True, 'id': wx.NewIdRef(), 'optional': True, 'min_width': 80, 'align': 'right'}
+                {'name': 'Name', 'visible': True, 'id': wx.NewIdRef(),
+                 'optional': False, 'min_width': 200, 'align': 'left',
+                 'width': 200},
+                {'name': 'Data modified', 'visible': True, 'id': wx.NewIdRef(),
+                 'optional': True, 'min_width': 100, 'align': 'left',
+                 'width': 100},
+                {'name': 'Data created', 'visible': False, 'id': wx.NewIdRef(),
+                 'optional': True, 'min_width': 100, 'align': 'left',
+                 'width': 100},
+                {'name': 'Type', 'visible': False, 'id': wx.NewIdRef(), 'optional': True,
+                 'min_width': 60, 'align': 'left', 'width': 60},
+                {'name': 'Size', 'visible': True, 'id': wx.NewIdRef(), 'optional': True,
+                 'min_width': 80, 'align': 'right', 'width': 80}
                 ]
 
     def __init__(self):
@@ -608,9 +619,24 @@ class DirWithColumnsMixin(DirMixin):
         self.columns_shown = list(range(len(self.columns)))
 
 
+    def GetColumnByPos(self, idx):
+        # return the actual column data by its actual idx in control
+        # for example, for ListCtrl, only the visible columns are added to the
+        # control, while for TreeList, all columns are added to the control.
+        return self.columns[idx]
+
     def OnColRightClick(self, event):
         menu = wx.Menu()
-
+        column = event.GetColumn()
+        col = self.GetColumnByPos(column)
+        if column != 0:
+            item = menu.AppendCheckItem(self.ID_COL_ALIGN_LEFT, 'Align left')
+            item.Check(col['align'] == 'left')
+            item = menu.AppendCheckItem(self.ID_COL_ALIGN_CENTER, 'Align center')
+            item.Check(col['align'] == 'center')
+            item = menu.AppendCheckItem(self.ID_COL_ALIGN_RIGHT, 'Align right')
+            item.Check(col['align'] == 'right')
+            menu.AppendSeparator()
         menu.Append(self.ID_AUTO_COL_SIZE, 'Size columns to fit')
         menu.Append(self.ID_AUTO_COL_SIZE_ALL, 'Size all columns to fit')
         menu.AppendSeparator()
@@ -623,7 +649,14 @@ class DirWithColumnsMixin(DirMixin):
 
         if cmd == wx.ID_NONE:
             return
-        if cmd == self.ID_AUTO_COL_SIZE:
+
+        if cmd == self.ID_COL_ALIGN_LEFT:
+            self.AlignColumn(event.GetColumn(), 'left')
+        elif cmd == self.ID_COL_ALIGN_CENTER:
+            self.AlignColumn(event.GetColumn(), 'center')
+        elif cmd == self.ID_COL_ALIGN_RIGHT:
+            self.AlignColumn(event.GetColumn(), 'right')
+        elif cmd == self.ID_AUTO_COL_SIZE:
             self.AutoSizeColumns([event.GetColumn()])
         elif cmd == self.ID_AUTO_COL_SIZE_ALL:
             self.AutoSizeColumns()
@@ -633,6 +666,10 @@ class DirWithColumnsMixin(DirMixin):
                     col['visible'] = not col['visible']
 
             self.BuildColumns()
+
+    @abc.abstractmethod
+    def AlignColumn(self, col, align):
+        pass
 
     @abc.abstractmethod
     def BuildColumns(self):
@@ -697,14 +734,38 @@ class DirWithColumnsMixin(DirMixin):
     def LoadConfig(self):
         super().LoadConfig()
 
+        resp = dp.send('frame.get_config', group='dirlistctrl', key='columns')
+        if resp and resp[0][1] is not None:
+            cols = resp[0][1]
+            if len(cols) == len(self.columns):
+                for idx, col in enumerate(self.columns):
+                    cols[idx].pop('id', None)
+                    cols[idx].pop('optional', None)
+                    col.update(cols[idx])
+
         resp = dp.send('frame.get_config', group='dirlistctrl', key='columns_shown')
         if resp and resp[0][1] is not None:
             self.SetShowColumns(resp[0][1])
+
+    def SaveColumnWidth(self):
+        # save the width of visible columns
+        for c in range(self.GetColumnCount()):
+            column = self.GetColumnByPos(c)
+            column['width'] = self.GetColumnWidth(c)
 
     def SaveConfig(self):
         super().SaveConfig()
 
         dp.send('frame.set_config', group='dirlistctrl', columns_shown=self.GetShownColumns())
+
+        self.SaveColumnWidth()
+        cols = [dict(c) for c in self.columns]
+        for c in cols:
+            # ignore these configs
+            c.pop('id', None)
+            c.pop('optional', None)
+        dp.send('frame.set_config', group='dirlistctrl', columns=cols)
+
 
 class DirTreeMixin(DirMixin):
 
@@ -939,6 +1000,10 @@ class DirListCtrl(ListCtrlBase, DirWithColumnsMixin):
 
         self.Fill(self.pattern)
 
+    def GetColumnByPos(self, idx):
+        column = self.columns_shown[idx]
+        return self.columns[column]
+
     def BuildColumns(self):
         self.DeleteAllColumns()
         self.columns_shown = []
@@ -951,20 +1016,26 @@ class DirListCtrl(ListCtrlBase, DirWithColumnsMixin):
                 fmt = wx.LIST_FORMAT_RIGHT
             elif col['align'] == 'center':
                 fmt = wx.LIST_FORMAT_CENTER
-            self.AppendColumn(col['name'], format=fmt, width=col['min_width'])
+            self.AppendColumn(col['name'], format=fmt, width=col['width'])
+
+    def AlignColumn(self, col, align):
+        column = self.GetColumnByPos(col)
+        column['align'] = align
+        self.SaveColumnWidth()
+        self.BuildColumns()
 
     def AutoSizeColumns(self, columns=None):
         if columns is None:
             columns = range(self.GetColumnCount())
         for col in columns:
             self.SetColumnWidth(col, wx.LIST_AUTOSIZE)
-            column = self.columns_shown[col]
-            if self.GetColumnWidth(col) < self.columns[column]['min_width']:
-                self.SetColumnWidth(col, self.columns[column]['min_width'])
+            column = self.GetColumnByPos(col)
+            if self.GetColumnWidth(col) < column['min_width']:
+                self.SetColumnWidth(col, column['min_width'])
 
     def OnGetItemText(self, item, column):
         if column < self.data_start_column:
-            return super().OnGetItemText()
+            return super().OnGetItemText(item, column)
         column = self.columns_shown[column]
         return self.GetItemColumnText(self.data_shown[item], column)
 
@@ -1011,7 +1082,7 @@ class DirListCtrl(ListCtrlBase, DirWithColumnsMixin):
         self.data = super().LoadPath(directory)
         self.Fill(self.pattern)
 
-        self.AutoSizeColumns()
+        #self.AutoSizeColumns()
         return self.data
 
     def Delete(self, item):
@@ -1057,7 +1128,7 @@ class DirListCtrl(ListCtrlBase, DirWithColumnsMixin):
                 self.ShowSortIndicator(sort_column, sort_order)
 
     def SaveConfig(self):
-        DirWithColumnsMixin.LoadConfig(self)
+        DirWithColumnsMixin.SaveConfig(self)
         dp.send('frame.set_config', group='dirlistctrl', columns_order=self.GetColumnsOrder())
 
         col = self.GetSortIndicator()
@@ -1157,13 +1228,24 @@ class DirTreeList(HTL.HyperTreeList, DirWithColumnsMixin, DirTreeMixin, FindTree
                     flag = wx.ALIGN_RIGHT
                 elif col['align'] == 'center':
                     flag= wx.ALIGN_CENTER
-                self.AddColumn(col['name'], flag=flag, width=col['min_width'])
+                if col['width'] < col['min_width']:
+                    col['width'] = col['min_width']
+                self.AddColumn(col['name'], flag=flag, width=col['width'])
 
         self.columns_shown = []
         for idx, col in enumerate(self.columns):
             self.SetColumnShown(idx, col['visible'])
             if not col['visible']:
                 continue
+            flag = wx.ALIGN_LEFT
+            if col['align'] == 'right':
+                flag = wx.ALIGN_RIGHT
+            elif col['align'] == 'center':
+                flag= wx.ALIGN_CENTER
+            self.SetColumnAlignment(idx, flag)
+            if col['width'] < col['min_width']:
+                col['width'] = col['min_width']
+            self.SetColumnWidth(idx, col['width'])
             self.columns_shown.append(idx)
 
     def OnRightClickItem2(self, event):
@@ -1194,7 +1276,7 @@ class DirTreeList(HTL.HyperTreeList, DirWithColumnsMixin, DirTreeMixin, FindTree
 
         # Give the TreeList control sometime to update the best column width
         # not perfect on Windows
-        wx.CallAfter(self.AutoSizeColumns)
+        #wx.CallAfter(self.AutoSizeColumns)
 
     def HitTestItem(self, pos):
         item = self.HitTest(self.ScreenToClient(pos))
@@ -1210,6 +1292,15 @@ class DirTreeList(HTL.HyperTreeList, DirWithColumnsMixin, DirTreeMixin, FindTree
                 self.EnsureVisible(item)
                 break
             item, cookie = self.GetNextChild(root_item, cookie)
+
+    def AlignColumn(self, col, align):
+        self.columns[col]['align'] = align
+        flag = wx.ALIGN_LEFT
+        if align == 'right':
+            flag = wx.ALIGN_RIGHT
+        elif align == 'center':
+            flag = wx.ALIGN_CENTER
+        self.SetColumnAlignment(col, flag)
 
     def AutoSizeColumns(self, columns=None):
         if columns is None:
