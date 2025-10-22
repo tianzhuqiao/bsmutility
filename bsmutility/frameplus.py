@@ -514,7 +514,11 @@ class FramePlus(wx.Frame):
                 while more:
                     value = self.config.Read(k)
                     if value.startswith('__bsm__'):
-                        value = json.loads(value[7:], object_hook=hinted_tuple_hook)
+                        try:
+                            value = json.loads(value[7:], object_hook=hinted_tuple_hook)
+                        except:
+                            traceback.print_exc(file=sys.stdout)
+                            continue
                     rst[k] = value
                     more, k, index = self.config.GetNextEntry(index)
                 return rst
@@ -522,7 +526,11 @@ class FramePlus(wx.Frame):
             if self.config.HasEntry(key):
                 value = self.config.Read(key)
                 if value.startswith('__bsm__'):
-                    value = json.loads(value[7:], object_hook=hinted_tuple_hook)
+                    try:
+                        value = json.loads(value[7:], object_hook=hinted_tuple_hook)
+                    except:
+                        value = default
+                        traceback.print_exc(file=sys.stdout)
                 return value
         return default
 
