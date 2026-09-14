@@ -24,6 +24,22 @@ wxEVT_DIR_OPEN = wx.NewEventType()
 
 EVT_DIR_OPEN = wx.PyEventBinder(wxEVT_DIR_OPEN, 1)
 
+def MakeDisabledBitmap(original):
+    """
+    Creates a disabled-looking bitmap starting from the input one.
+
+    :param `original`: an instance of :class:`wx.Bitmap` to be greyed-out.
+
+    :return: An instance of :class:`wx.Bitmap`, containing a disabled-looking
+     representation of the original item image.
+    """
+    return original#.ConvertToDisabled()
+
+if wx.Platform == '__WXMAC__':
+    import wx.lib.agw.customtreectrl as ct
+    ct.MakeDisabledBitmap = MakeDisabledBitmap
+
+
 class DirEvent(wx.PyCommandEvent):
     def __init__(self, commandType, path, eid=0, **kwargs):
         wx.PyCommandEvent.__init__(self, commandType, eid)
@@ -98,7 +114,7 @@ class DirMixin:
         self.iconentries['directory'] = -1
         self.iconentries['directory_open'] = -1
         scale = 1
-        if not wx.Platform == '__WXMSW__':
+        if not wx.Platform in ['__WXMSW__', '__WXMAC__']:
             # looks like Windows doesn't support high DPI image (wx 4.2.2)
             scale = self.GetDPIScaleFactor()
         bmp = wx.ArtProvider.GetBitmap(wx.ART_FOLDER, wx.ART_OTHER, (int(16*scale), int(16*scale)))
